@@ -75,6 +75,7 @@ import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
         connection: {
           host: config.get<string>('bullmq.host'),
           port: config.get<number>('bullmq.port'),
+          password: config.get<string>('bullmq.password'),
         },
       }),
     }),
