@@ -21,7 +21,7 @@ async function bootstrap() {
   app.enableCors({
     origin:
       nodeEnv === 'production'
-        ? ['https://fracture.app'] // lock down in production
+        ? ['https://fracture.app', 'https://fracture-app.vercel.app'] // lock down in production
         : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3002'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
