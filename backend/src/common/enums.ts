@@ -1,0 +1,21 @@
+export enum FramingType {
+  CONFLICT = 'CONFLICT',
+  HUMAN_INTEREST = 'HUMAN_INTEREST',
+  ECONOMIC = 'ECONOMIC',
+  MORAL = 'MORAL',
+  RESPONSIBILITY = 'RESPONSIBILITY',
+}
+
+export enum LedeType {
+  SUMMARY = 'SUMMARY',
+  ANECDOTAL = 'ANECDOTAL',
+  SCENIC = 'SCENIC',
+  QUESTION = 'QUESTION',
+}
+
+export enum SourceTier {
+  TIER_1_BREAKING = 'TIER_1_BREAKING',
+  TIER_1_STANDARD = 'TIER_1_STANDARD',
+  TIER_2 = 'TIER_2',
+  TIER_3 = 'TIER_3',
+}
