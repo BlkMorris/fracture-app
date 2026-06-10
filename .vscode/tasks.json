@@ -4,7 +4,7 @@
 		{
 			"label": "Next.js Dev Server",
 			"type": "shell",
-			"command": "cd /Users/blake/Repos/fracture-app/frontend && npx next dev --port 3001",
+			"command": "cd /Users/blake/Repos/fracture-app/frontend && NODE_OPTIONS='--max-old-space-size=4096' npx next dev --port 3001",
 			"isBackground": true,
 			"problemMatcher": [],
 			"group": "none"

@@ -1,8 +1,10 @@
+> ⚠️ Superseded by SYSTEM_DESIGN_v5.md — April 2026.
+
 # FRACTURE — Technical System Design v4
 
 **Version:** 4.0
 **Date:** March 23, 2026
-**Status:** Current — supersedes SYSTEM_DESIGN_v3.md (March 12, 2026)
+**Status:** Superseded by SYSTEM_DESIGN_v5.md
 
 ---
 
