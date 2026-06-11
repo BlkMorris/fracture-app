@@ -66,7 +66,7 @@ export default function HomePage() {
         <div className="fx-nav-row">
           <div className="fx-links" aria-label="Primary sections">
             <Link href="/" className="active">Home</Link>
-            <Link href="/search">Stories</Link>
+            <Link href="/stories">Stories</Link>
             <Link href="#source-credibility">Sources</Link>
           </div>
           <div className="fx-topic-nav" role="tablist" aria-label="Filter by topic">

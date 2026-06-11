@@ -208,7 +208,7 @@ export function MockupFrame({
   onTopicChange,
 }: {
   children: React.ReactNode;
-  page?: "home" | "stories";
+  page?: "home" | "stories" | "story";
   topic: Topic;
   onTopicChange: (topic: Topic) => void;
 }) {
@@ -503,6 +503,120 @@ export function HomepageMockup() {
                 ))}
               </div>
             </div>
+          </div>
+        </section>
+      </main>
+    </MockupFrame>
+  );
+}
+
+export function StoryDetailMockup() {
+  const [topic, setTopic] = useState<Topic>("All");
+  const [selected, setSelected] = useState(outlets[0].name);
+  const [feedback, setFeedback] = useState<"accurate" | "off" | null>(null);
+  const story = stories[0];
+  const selectedOutlet = outlets.find((outlet) => outlet.name === selected) ?? outlets[0];
+
+  return (
+    <MockupFrame page="story" topic={topic} onTopicChange={setTopic}>
+      <main className="fx-page fx-detail-page">
+        <section className="fx-detail-hero">
+          <div>
+            <p className="fx-eyebrow"><Sparkles size={15} /> Story detail / {story.topic}</p>
+            <h1>{story.title}</h1>
+            <p>
+              Coverage agrees the talks are under pressure, but diverges sharply on whether the central frame is obligation, fiscal caution, or diplomatic process.
+            </p>
+            <div className="fx-detail-meta">
+              <span>{story.sources} outlets monitored</span>
+              <span>First reported by Reuters</span>
+              <span>Updated {story.updated}</span>
+            </div>
+          </div>
+
+          <aside className="fx-detail-score">
+            <FdiBadge score={story.fdi} large />
+            <p>This story is being covered differently across outlets. Fracture shows the gap without adding an editorial voice.</p>
+          </aside>
+        </section>
+
+        <section className="fx-section fx-neutral-summary">
+          <p className="fx-eyebrow">Fracture neutral summary</p>
+          <p>
+            Across shared coverage, outlets describe negotiations nearing a deadline with unresolved funding questions. The split appears in who gets framed as responsible, how cost is described, and whether the delay is treated as policy process or accountability failure.
+          </p>
+        </section>
+
+        <section className="fx-section fx-detail-grid">
+          <div className="fx-panel fx-spectrum-panel">
+            <div className="fx-section-header">
+              <div>
+                <p className="fx-eyebrow">Source spectrum</p>
+                <h2>Accountability ← Finance frame → Cost</h2>
+              </div>
+            </div>
+            <div className="fx-spectrum-track">
+              {outlets.map((outlet) => (
+                <button key={outlet.name} type="button" className={selected === outlet.name ? "active" : ""} style={{ left: `${outlet.position}%` }} onClick={() => setSelected(outlet.name)} aria-label={`Highlight ${outlet.name}`}>
+                  {outlet.logo}
+                </button>
+              ))}
+            </div>
+            <div className="fx-spectrum-labels"><span>Responsibility</span><span>Diplomatic process</span><span>Cost risk</span></div>
+          </div>
+
+          <aside className="fx-panel fx-selected-outlet">
+            <p className="fx-eyebrow">Selected outlet</p>
+            <div className="fx-source-logo">{selectedOutlet.logo}</div>
+            <h2>{selectedOutlet.name}</h2>
+            <p>{selectedOutlet.sample}</p>
+            <FdiBadge score={selectedOutlet.divergence} />
+          </aside>
+        </section>
+
+        <section className="fx-section">
+          <div className="fx-section-header">
+            <div>
+              <p className="fx-eyebrow">Headline comparison</p>
+              <h2>Same story, different framing.</h2>
+            </div>
+          </div>
+          <div className="fx-headline-list">
+            {outlets.map((outlet) => (
+              <button key={outlet.name} type="button" className={selected === outlet.name ? "active" : ""} onClick={() => setSelected(outlet.name)}>
+                <span>{outlet.name}</span>
+                <strong>{outlet.headline}</strong>
+                <FdiBadge score={outlet.divergence} />
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="fx-section fx-trust-grid">
+          <div className="fx-panel">
+            <p className="fx-eyebrow">Is this FDI accurate?</p>
+            <div className="fx-feedback">
+              <button className={feedback === "accurate" ? "active" : ""} type="button" onClick={() => setFeedback("accurate")}>Yes, it tracks</button>
+              <button className={feedback === "off" ? "active" : ""} type="button" onClick={() => setFeedback("off")}>Something feels off</button>
+            </div>
+            {feedback && <p className="fx-feedback-note">Thanks. Reader feedback helps audit future divergence scores.</p>}
+          </div>
+          <div className="fx-panel">
+            <p className="fx-eyebrow">Reader insight</p>
+            <p className="fx-reader-note">The spectrum makes it clear that outlets can cite the same deadline but choose different responsible actors.</p>
+            <span className="fx-feedback-note">Maya C. / 14 replies</span>
+          </div>
+        </section>
+
+        <section className="fx-section">
+          <div className="fx-section-header">
+            <div>
+              <p className="fx-eyebrow">Related stories</p>
+              <h2>More coverage with visible framing distance.</h2>
+            </div>
+          </div>
+          <div className="fx-story-grid compact">
+            {stories.slice(1, 4).map((item) => <StoryCard key={item.id} story={item} />)}
           </div>
         </section>
       </main>
@@ -1248,6 +1362,171 @@ body:has(.fx) .ns-navbar {
 .fx-compare-examples small {
   color: var(--fx-muted);
 }
+.fx-detail-page { max-width: 1240px; }
+.fx-detail-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 34px;
+  align-items: center;
+  padding: 44px 0 38px;
+  border-bottom: 1px solid var(--fx-border);
+}
+.fx-detail-hero h1 {
+  max-width: 880px;
+  margin: 12px 0 16px;
+  font-size: clamp(42px, 6vw, 82px);
+  line-height: .92;
+  letter-spacing: -.04em;
+}
+.fx-detail-hero p:not(.fx-eyebrow),
+.fx-neutral-summary > p:last-child {
+  max-width: 760px;
+  margin: 0;
+  color: var(--fx-muted);
+  font-family: Georgia, serif;
+  font-size: 20px;
+  line-height: 1.62;
+}
+.fx-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+  color: var(--fx-muted);
+  font-size: 13px;
+}
+.fx-detail-meta span {
+  border-top: 1px solid var(--fx-border);
+  padding-top: 8px;
+}
+.fx-detail-score {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid var(--fx-border);
+  background: radial-gradient(circle at 50% 10%, var(--fx-blue-soft), transparent 60%), var(--fx-surface);
+  box-shadow: var(--fx-shadow);
+}
+.fx-detail-score p {
+  margin: 0;
+  font-family: Georgia, serif;
+  line-height: 1.55;
+}
+.fx-neutral-summary {
+  padding: 28px;
+  border: 1px solid var(--fx-border);
+  background: var(--fx-surface);
+}
+.fx-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 22px;
+  align-items: start;
+}
+.fx-panel {
+  background: var(--fx-surface);
+  border: 1px solid var(--fx-border);
+  padding: 24px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.02);
+}
+.fx-spectrum-panel { min-height: 310px; }
+.fx-spectrum-track {
+  position: relative;
+  height: 134px;
+  margin: 40px 12px 16px;
+  border-bottom: 2px solid var(--fx-border);
+}
+.fx-spectrum-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: linear-gradient(90deg, #EF4444, #0066CC 50%, #10A760);
+}
+.fx-spectrum-track button {
+  position: absolute;
+  bottom: -21px;
+  transform: translateX(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 2px solid var(--fx-surface);
+  background: var(--fx-text);
+  color: var(--fx-bg);
+  cursor: pointer;
+  font-weight: 800;
+}
+.fx-spectrum-track button.active {
+  transform: translateX(-50%) scale(1.2);
+  box-shadow: 0 0 0 7px var(--fx-blue-soft);
+}
+.fx-spectrum-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fx-muted);
+  font-size: 13px;
+  padding-top: 18px;
+}
+.fx-selected-outlet h2,
+.fx-panel h2 {
+  font-size: 30px;
+  margin: 12px 0 10px;
+}
+.fx-headline-list { display: grid; gap: 10px; }
+.fx-headline-list button {
+  display: grid;
+  grid-template-columns: 150px 1fr 170px;
+  gap: 18px;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  border: 1px solid var(--fx-border);
+  background: var(--fx-surface);
+  color: var(--fx-text);
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.fx-headline-list button.active {
+  border-color: var(--fx-accent);
+  box-shadow: 0 0 0 3px var(--fx-blue-soft);
+}
+.fx-headline-list span { color: var(--fx-muted); }
+.fx-headline-list strong {
+  font-family: Georgia, serif;
+  font-size: 18px;
+}
+.fx-trust-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+.fx-feedback { display: flex; flex-wrap: wrap; gap: 10px; }
+.fx-feedback button {
+  min-height: 42px;
+  border: 1px solid var(--fx-border);
+  background: var(--fx-surface);
+  color: var(--fx-text);
+  padding: 0 14px;
+  cursor: pointer;
+}
+.fx-feedback button.active {
+  background: var(--fx-text);
+  color: var(--fx-bg);
+  border-color: var(--fx-text);
+}
+.fx-feedback-note {
+  color: var(--fx-accent);
+  font-size: 13px;
+  margin: 14px 0 0;
+}
+.fx-reader-note {
+  font-family: Georgia, serif;
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--fx-text);
+}
 .fx-footer {
   max-width: 1200px;
   margin: 24px auto 0;
@@ -1506,6 +1785,8 @@ body:has(.fx) .ns-navbar {
   .fx-community-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fx-credibility-list { grid-template-columns: 1fr; }
   .fx-compare-panel, .fx-compare-results { grid-template-columns: 1fr; }
+  .fx-detail-hero, .fx-detail-grid, .fx-trust-grid { grid-template-columns: 1fr; }
+  .fx-headline-list button { grid-template-columns: 1fr; }
   .fx-footer-lede, .fx-footer-links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fx-footer-bottom { align-items: start; flex-direction: column; }
   .fx-divergence-row { grid-template-columns: 42px minmax(0, 1fr) 62px; }
@@ -1530,6 +1811,10 @@ body:has(.fx) .ns-navbar {
   .fx-credibility-row { grid-template-columns: 1fr; }
   .fx-rating { justify-items: start; }
   .fx-compare-panel { padding: 16px; }
+  .fx-detail-hero h1 { font-size: 42px; }
+  .fx-detail-score, .fx-neutral-summary, .fx-panel { padding: 18px; }
+  .fx-spectrum-track { margin-left: 4px; margin-right: 4px; }
+  .fx-spectrum-track button { width: 38px; height: 38px; font-size: 12px; }
   .fx-footer { padding-top: 44px; }
   .fx-footer-lede, .fx-footer-links { grid-template-columns: 1fr; }
   .fx-divergence-row { grid-template-columns: 1fr; gap: 8px; }
