@@ -1110,6 +1110,8 @@ body:has(.fx) .ns-navbar {
   border: 1px solid var(--fx-border);
   color: var(--fx-text);
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
   transform: translateY(0) scale(1);
   transform-origin: center top;
   transition:
@@ -1132,10 +1134,16 @@ body:has(.fx) .ns-navbar {
   transition: transform 520ms cubic-bezier(.16, 1, .3, 1);
 }
 .fx-card:hover img { transform: scale(1.035); }
-.fx-card-body { padding: 20px; }
+.fx-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 20px;
+}
 .fx-card-topic { color: var(--fx-accent); font-size: 12px; text-transform: uppercase; font-weight: 700; }
 .fx-card h3 { font-size: 21px; line-height: 1.18; margin: 8px 0 10px; }
 .fx-card p { margin: 0 0 16px; line-height: 1.5; }
+.fx-card .fx-fdi { margin-top: auto; }
 .fx-card-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--fx-muted); font-size: 13px; margin-top: 13px; }
 .fx-fdi {
   display: grid;
