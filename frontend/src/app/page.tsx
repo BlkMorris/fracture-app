@@ -1,15 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, CircleUser, Moon, Search, SlidersHorizontal, Sparkles, Sun } from "lucide-react";
 import { useHomepage, useStats, useStories } from "@/hooks/useStories";
 import { formatTimeAgo } from "@/components/ui";
 import type { StoryCluster } from "@/types";
 
-type Topic = "All" | "Politics" | "Tech" | "Business" | "World" | "Sports";
-
-const TOPICS: Topic[] = ["Politics", "Tech", "Business", "World", "Sports"];
+const SECTION_LINKS = [
+  { href: "#trending-stories", label: "Trending" },
+  { href: "#highest-divergence", label: "Highest diverged" },
+  { href: "#community-picks", label: "Community" },
+  { href: "#source-credibility", label: "Credibility" },
+  { href: "#compare-outlets", label: "Try it" },
+];
 
 function fdiLevel(score: number) {
   if (score >= 70) return "HIGH";
@@ -38,10 +42,33 @@ function storyFdi(story: StoryCluster) {
 export default function HomePage() {
   const [dark, setDark] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [topic, setTopic] = useState<Topic>("All");
+  const [navHidden, setNavHidden] = useState(false);
   const [visible, setVisible] = useState(9);
   const [leftOutlet, setLeftOutlet] = useState("Reuters");
   const [rightOutlet, setRightOutlet] = useState("Wall Street Journal");
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    lastScrollY.current = window.scrollY;
+
+    function handleScroll() {
+      const currentY = window.scrollY;
+      const delta = currentY - lastScrollY.current;
+
+      if (currentY < 32) {
+        setNavHidden(false);
+      } else if (delta > 8) {
+        setNavHidden(true);
+      } else if (delta < -8) {
+        setNavHidden(false);
+      }
+
+      lastScrollY.current = currentY;
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const { data: homepage, isLoading } = useHomepage();
   const { data: storiesData } = useStories({ limit: 40 });
@@ -51,7 +78,7 @@ export default function HomePage() {
   const hero = homepage?.hero ?? allStories[0] ?? null;
   const storyPool = allStories.length ? allStories : [...(homepage?.trending ?? []), ...(homepage?.mostFractured ? [homepage.mostFractured] : [])];
   const uniqueStories = Array.from(new Map(storyPool.filter((story) => story.id !== hero?.id).map((story) => [story.id, story])).values());
-  const filteredStories = topic === "All" ? uniqueStories : uniqueStories.filter((story) => story.topicCategory?.toLowerCase() === topic.toLowerCase());
+  const filteredStories = uniqueStories;
   const shownStories = filteredStories.slice(0, visible);
   const highestDivergence = [...(hero ? [hero, ...uniqueStories] : uniqueStories)].sort((a, b) => storyFdi(b) - storyFdi(a)).slice(0, 5);
   const communityPicks = highestDivergence.slice(0, 4).map((story) => ({ story, flags: Math.max(18, Math.round(storyFdi(story) * 1.45 + story.sourceCount)) }));
@@ -61,7 +88,7 @@ export default function HomePage() {
 
   return (
     <div className={`fx ${dark ? "fx-dark" : ""}`}>
-      <nav className="fx-nav" aria-label="Fracture navigation">
+      <nav className={`fx-nav ${navHidden ? "hidden" : ""}`} aria-label="Fracture navigation">
         <Link href="/" className="fx-logo" aria-label="Fracture home"><span>F</span>Fracture</Link>
         <div className="fx-nav-row">
           <div className="fx-links" aria-label="Primary sections">
@@ -69,9 +96,9 @@ export default function HomePage() {
             <Link href="/stories">Stories</Link>
             <Link href="#source-credibility">Sources</Link>
           </div>
-          <div className="fx-topic-nav" role="tablist" aria-label="Filter by topic">
-            {TOPICS.map((item) => (
-              <button key={item} type="button" className={topic === item ? "active" : ""} onClick={() => { setTopic(item); setVisible(9); }}>{item}</button>
+          <div className="fx-topic-nav" aria-label="Homepage sections">
+            {SECTION_LINKS.map((item) => (
+              <a key={item.href} href={item.href}>{item.label}</a>
             ))}
           </div>
           <div className="fx-nav-actions">
@@ -110,12 +137,12 @@ export default function HomePage() {
           {visible < filteredStories.length && <div className="fx-load-row"><button type="button" onClick={() => setVisible((count) => Math.min(count + 6, filteredStories.length))}>Load more stories</button></div>}
         </section>
 
-        <section className="fx-section fx-divergence-week">
+        <section className="fx-section fx-divergence-week" id="highest-divergence">
           <div className="fx-section-header"><div><p className="fx-eyebrow">Highest divergence this week</p><h2>The five stories with the widest framing distance.</h2></div><Link href="/search" className="fx-week-cta">View all high-divergence stories</Link></div>
           <div className="fx-divergence-list">{highestDivergence.map((story, index) => <article key={story.id} className="fx-divergence-row"><span className="fx-divergence-rank">{String(index + 1).padStart(2, "0")}</span><h3>{story.topic}</h3><strong>{storyFdi(story)}</strong><span className={`fx-divergence-level ${fdiLevel(storyFdi(story)).toLowerCase()}`}>{fdiLevel(storyFdi(story))}</span></article>)}</div>
         </section>
 
-        <section className="fx-section fx-community-picks">
+        <section className="fx-section fx-community-picks" id="community-picks">
           <div className="fx-section-header"><div><p className="fx-eyebrow">Community picks</p><h2>Most flagged divergence readers are discovering.</h2></div></div>
           <div className="fx-community-grid">{communityPicks.map(({ story, flags }) => <article key={story.id} className="fx-community-card"><span>{flags} readers flagged this</span><h3>{story.topic}</h3><div><FdiBadge score={storyFdi(story)} /><small>{fdiLevel(storyFdi(story))} divergence surprised readers across shared coverage.</small></div></article>)}</div>
         </section>
@@ -125,7 +152,7 @@ export default function HomePage() {
           <div className="fx-credibility-list">{outletNames.slice(0, 4).map((name, index) => <article key={name} className="fx-credibility-row"><span className="fx-source-logo">{name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span><div><h3>{name}</h3><p>{["Consistently neutral framing", "Clear context without excess heat", "Strong sourcing on policy details", "Transparent attribution patterns"][index]}</p></div><div className="fx-rating"><strong>{(4.8 - index * 0.2).toFixed(1)}</strong><span>{(4.8 - index * 0.2).toFixed(1)}/5</span></div></article>)}</div>
         </section>
 
-        <section className="fx-section fx-compare-widget">
+        <section className="fx-section fx-compare-widget" id="compare-outlets">
           <div className="fx-section-header"><div><p className="fx-eyebrow">Try it</p><h2>Compare outlets and see how their framing usually differs.</h2></div></div>
           <div className="fx-compare-panel">
             <div className="fx-compare-controls">
@@ -148,7 +175,7 @@ function HomepageSkeleton() {
 }
 
 function EmptyState() {
-  return <div className="fx-empty"><h3>No stories match this view.</h3><p>Try another topic or return to all trending coverage.</p></div>;
+  return <div className="fx-empty"><h3>No stories are available yet.</h3><p>Check back as Fracture indexes new coverage.</p></div>;
 }
 
 function StoryCard({ story }: { story: StoryCluster }) {
@@ -173,11 +200,12 @@ const styles = `
 body:has(.fx) > .ns-navbar, body:has(.fx) > footer, body:has(.fx) .ns-navbar { display: none !important; }
 .fx { --fx-bg:#F8F7F5; --fx-surface:#FFFFFF; --fx-text:#1A1918; --fx-muted:#6B6B6B; --fx-accent:#0066CC; --fx-border:#E8E6E3; --fx-blue-soft:#E3F2FF; --fx-shadow:0 18px 50px rgba(26,25,24,.09); min-height:100vh; background:var(--fx-bg); color:var(--fx-text); font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
 .fx.fx-dark { --fx-bg:#0F0F0F; --fx-surface:#1A1A1A; --fx-text:#F5F5F5; --fx-muted:#A0A0A0; --fx-accent:#3B82F6; --fx-border:#404040; --fx-blue-soft:rgba(59,130,246,.16); --fx-shadow:0 18px 60px rgba(0,0,0,.34); }
-.fx button,.fx input,.fx select{font:inherit}.fx a,.fx button,.fx select{transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease,background .2s ease,color .2s ease}.fx h1,.fx h2,.fx h3{font-family:Georgia,"Times New Roman",serif;color:var(--fx-text)}.fx p{color:var(--fx-muted)}
-.fx-nav{position:sticky;top:0;z-index:20;min-height:132px;display:grid;grid-template-columns:1fr;gap:18px;align-items:center;justify-items:center;padding:22px max(24px,calc((100vw - 1280px)/2)) 16px;background:linear-gradient(90deg,color-mix(in srgb,var(--fx-surface) 88%,transparent),color-mix(in srgb,var(--fx-bg) 86%,transparent)),color-mix(in srgb,var(--fx-bg) 92%,transparent);border-bottom:1px solid var(--fx-border);backdrop-filter:blur(18px);box-shadow:0 12px 44px rgba(26,25,24,.05)}
+.fx button,.fx input,.fx select{font:inherit}.fx a,.fx button,.fx select{transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease,background .2s ease,color .2s ease}.fx h1,.fx h2,.fx h3{font-family:Georgia,"Times New Roman",serif;color:var(--fx-text)}.fx p{color:var(--fx-muted)}.fx-section{scroll-margin-top:154px}
+.fx-nav{position:sticky;top:0;z-index:20;min-height:132px;display:grid;grid-template-columns:1fr;gap:18px;align-items:center;justify-items:center;padding:22px max(24px,calc((100vw - 1280px)/2)) 16px;background:linear-gradient(90deg,color-mix(in srgb,var(--fx-surface) 88%,transparent),color-mix(in srgb,var(--fx-bg) 86%,transparent)),color-mix(in srgb,var(--fx-bg) 92%,transparent);border-bottom:1px solid var(--fx-border);backdrop-filter:blur(18px);box-shadow:0 12px 44px rgba(26,25,24,.05);transform:translateY(0);opacity:1;transition:transform .46s cubic-bezier(.16,1,.3,1),opacity .28s ease,box-shadow .28s ease}
+.fx-nav.hidden{transform:translateY(calc(-100% - 18px));opacity:.98;box-shadow:none}
 .fx-nav-row,.fx-nav-actions,.fx-links,.fx-topic-nav{display:flex;align-items:center}.fx-nav-row{width:100%;justify-content:center;gap:clamp(22px,3vw,42px);flex-wrap:wrap}.fx-nav-actions{gap:clamp(14px,2vw,24px);position:relative;padding-left:clamp(22px,2.6vw,38px)}.fx-nav-actions:before{content:"";position:absolute;left:0;top:50%;width:1px;height:24px;background:var(--fx-border);transform:translateY(-50%)}
 .fx-logo{display:inline-flex;align-items:center;gap:14px;color:var(--fx-text);font-family:Georgia,"Times New Roman",serif;font-size:clamp(34px,4vw,54px);font-weight:700;letter-spacing:-.04em;line-height:.9}.fx-logo span,.fx-source-logo{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:var(--fx-text);color:var(--fx-bg);font-family:Georgia,serif;font-weight:700;font-size:18px}
-.fx-links{gap:clamp(18px,2.5vw,34px)}.fx-topic-nav{justify-content:center;gap:clamp(18px,2.5vw,36px);min-width:0}.fx-links a,.fx-topic-nav button{position:relative;border:0;background:transparent;color:var(--fx-muted);cursor:pointer;padding:4px 0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.fx-links a:after,.fx-topic-nav button:after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:1px;background:currentColor;transform:scaleX(0);transform-origin:center;transition:transform .18s ease}.fx-links a.active,.fx-links a:hover,.fx-topic-nav button.active,.fx-topic-nav button:hover{color:var(--fx-text)}.fx-links a.active:after,.fx-links a:hover:after,.fx-topic-nav button.active:after,.fx-topic-nav button:hover:after{transform:scaleX(1)}
+.fx-links{gap:clamp(18px,2.5vw,34px)}.fx-topic-nav{justify-content:center;gap:clamp(18px,2.5vw,36px);min-width:0}.fx-links a,.fx-topic-nav a{position:relative;border:0;background:transparent;color:var(--fx-muted);cursor:pointer;padding:4px 0;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.fx-links a:after,.fx-topic-nav a:after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:1px;background:currentColor;transform:scaleX(0);transform-origin:center;transition:transform .18s ease}.fx-links a.active,.fx-links a:hover,.fx-topic-nav a:hover{color:var(--fx-text)}.fx-links a.active:after,.fx-links a:hover:after,.fx-topic-nav a:hover:after{transform:scaleX(1)}
 .fx-icon-control{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid color-mix(in srgb,var(--fx-text) 14%,var(--fx-border));border-radius:999px;background:color-mix(in srgb,var(--fx-surface) 82%,transparent);color:var(--fx-text);cursor:pointer;box-shadow:0 1px 0 rgba(26,25,24,.04);flex:0 0 auto}.fx-icon-control:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--fx-text) 34%,var(--fx-border));box-shadow:0 12px 30px rgba(26,25,24,.08)}
 .fx-search-shell{display:inline-flex;align-items:center;gap:8px;min-width:34px;width:34px;height:34px;overflow:hidden;border-radius:999px;transition:width .28s cubic-bezier(.16,1,.3,1),background .22s ease,border-color .22s ease,padding .28s cubic-bezier(.16,1,.3,1),box-shadow .22s ease;-webkit-tap-highlight-color:transparent}.fx-search-shell:focus,.fx-search-shell:focus-within,.fx-search-shell .fx-icon-control:focus,.fx-search-shell .fx-icon-control:focus-visible{outline:none}.fx-search-shell.open{width:210px;padding-right:12px;border:1px solid color-mix(in srgb,var(--fx-text) 14%,var(--fx-border));background:color-mix(in srgb,var(--fx-surface) 88%,transparent);box-shadow:0 12px 30px rgba(26,25,24,.07)}.fx-search-shell.open .fx-icon-control{border-color:transparent;background:transparent;box-shadow:none}.fx-search-shell input{width:142px;min-width:0;border:0;outline:0;box-shadow:none;appearance:none;background:transparent;color:var(--fx-text);font-size:13px;opacity:0;transform:translateX(-6px);pointer-events:none;transition:opacity .18s ease .08s,transform .22s cubic-bezier(.16,1,.3,1) .06s}.fx-search-shell.open input{opacity:1;transform:translateX(0);pointer-events:auto}.fx-search-shell input:focus,.fx-search-shell input:focus-visible{outline:none;box-shadow:none}.fx-search-shell input::placeholder{color:var(--fx-muted)}
 .fx-page{max-width:1200px;margin:0 auto;padding:34px 24px 72px}.fx-hero{min-height:460px;display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);gap:34px;align-items:center;padding:30px 0 38px}.fx-home-hero{border-bottom:1px solid var(--fx-border)}.fx-hero-copy h1{font-size:clamp(38px,5vw,62px);line-height:.98;margin:12px 0 16px;max-width:780px}.fx-hero-copy p:not(.fx-eyebrow){font-family:Georgia,serif;font-size:19px;line-height:1.52;max-width:640px}.fx-eyebrow{display:inline-flex;gap:7px;align-items:center;margin:0;color:var(--fx-accent);font-size:12px;font-weight:700;text-transform:uppercase}.fx-hero-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:28px}.fx-primary-action,.fx-secondary-action,.fx-load-row button{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;border:1px solid var(--fx-text);background:var(--fx-text);color:var(--fx-bg);padding:0 22px;cursor:pointer;border-radius:999px;font-size:13px;font-weight:700}.fx-secondary-action,.fx-load-row button{background:var(--fx-surface);color:var(--fx-text);border-color:color-mix(in srgb,var(--fx-text) 18%,var(--fx-border))}.fx-primary-action:hover,.fx-secondary-action:hover,.fx-load-row button:hover{transform:translateY(-1px);box-shadow:var(--fx-shadow)}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   CircleUser,
@@ -13,6 +13,14 @@ import {
 } from "lucide-react";
 
 type Topic = "All" | "Politics" | "Tech" | "Business" | "World" | "Sports";
+
+const HOMEPAGE_SECTION_LINKS = [
+  { href: "#trending-stories", label: "Trending" },
+  { href: "#highest-divergence", label: "Highest diverged" },
+  { href: "#community-picks", label: "Community" },
+  { href: "#source-credibility", label: "Credibility" },
+  { href: "#compare-outlets", label: "Try it" },
+];
 
 type Story = {
   id: string;
@@ -214,11 +222,35 @@ export function MockupFrame({
 }) {
   const [dark, setDark] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [navHidden, setNavHidden] = useState(false);
+  const lastScrollY = useRef(0);
   const topics: Topic[] = ["Politics", "Tech", "Business", "World", "Sports"];
+
+  useEffect(() => {
+    lastScrollY.current = window.scrollY;
+
+    function handleScroll() {
+      const currentY = window.scrollY;
+      const delta = currentY - lastScrollY.current;
+
+      if (currentY < 32) {
+        setNavHidden(false);
+      } else if (delta > 8) {
+        setNavHidden(true);
+      } else if (delta < -8) {
+        setNavHidden(false);
+      }
+
+      lastScrollY.current = currentY;
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   return (
     <div className={`fx ${dark ? "fx-dark" : ""}`}>
-      <nav className="fx-nav" aria-label="Fracture mockup navigation">
+      <nav className={`fx-nav ${navHidden ? "hidden" : ""}`} aria-label="Fracture mockup navigation">
         <Link href="/mockups" className="fx-logo" aria-label="Fracture mockups home">
           <span>F</span>
           Fracture
@@ -231,11 +263,11 @@ export function MockupFrame({
             <a href="#sources">Sources</a>
           </div>
 
-          <div className="fx-topic-nav" role="tablist" aria-label="Filter by topic">
-            {topics.map((item) => (
-              <button key={item} type="button" className={topic === item ? "active" : ""} onClick={() => onTopicChange(item)}>
-                {item}
-              </button>
+          <div className="fx-topic-nav" role={page === "home" ? undefined : "tablist"} aria-label={page === "home" ? "Homepage sections" : "Filter by topic"}>
+            {page === "home" ? HOMEPAGE_SECTION_LINKS.map((item) => (
+              <a key={item.href} href={item.href}>{item.label}</a>
+            )) : topics.map((item) => (
+              <button key={item} type="button" className={topic === item ? "active" : ""} onClick={() => onTopicChange(item)}>{item}</button>
             ))}
           </div>
 
@@ -321,11 +353,10 @@ function FractureFooter() {
 }
 
 export function HomepageMockup() {
-  const [topic, setTopic] = useState<Topic>("All");
   const [visible, setVisible] = useState(6);
   const [leftOutlet, setLeftOutlet] = useState(outlets[1].name);
   const [rightOutlet, setRightOutlet] = useState(outlets[4].name);
-  const filteredStories = topic === "All" ? stories : stories.filter((story) => story.topic === topic);
+  const filteredStories = stories;
   const shownStories = filteredStories.slice(0, visible);
   const highestDivergence = [...stories].sort((a, b) => b.fdi - a.fdi).slice(0, 5);
   const communityPicks = [
@@ -345,7 +376,7 @@ export function HomepageMockup() {
   const sharedFdi = Math.round((selectedLeft.divergence + selectedRight.divergence) / 2);
 
   return (
-    <MockupFrame topic={topic} onTopicChange={(item) => { setTopic(item); setVisible(6); }}>
+    <MockupFrame topic="All" onTopicChange={() => setVisible(6)}>
       <main className="fx-page">
         <section className="fx-hero fx-home-hero">
           <div className="fx-hero-copy">
@@ -386,7 +417,7 @@ export function HomepageMockup() {
           </div>
         </section>
 
-        <section className="fx-section fx-divergence-week">
+        <section className="fx-section fx-divergence-week" id="highest-divergence">
           <div className="fx-section-header">
             <div>
               <p className="fx-eyebrow">Highest divergence this week</p>
@@ -407,7 +438,7 @@ export function HomepageMockup() {
           </div>
         </section>
 
-        <section className="fx-section fx-community-picks">
+        <section className="fx-section fx-community-picks" id="community-picks">
           <div className="fx-section-header">
             <div>
               <p className="fx-eyebrow">Community picks</p>
@@ -429,7 +460,7 @@ export function HomepageMockup() {
           </div>
         </section>
 
-        <section className="fx-section fx-source-credibility">
+        <section className="fx-section fx-source-credibility" id="source-credibility">
           <div className="fx-section-header">
             <div>
               <p className="fx-eyebrow">Source credibility this week</p>
@@ -454,7 +485,7 @@ export function HomepageMockup() {
           </div>
         </section>
 
-        <section className="fx-section fx-compare-widget">
+        <section className="fx-section fx-compare-widget" id="compare-outlets">
           <div className="fx-section-header">
             <div>
               <p className="fx-eyebrow">Try it</p>
@@ -547,6 +578,44 @@ export function StoryDetailMockup() {
           </p>
         </section>
 
+        <section className="fx-section fx-context-grid">
+          <article className="fx-panel fx-why-panel">
+            <p className="fx-eyebrow">Why we&apos;re covering this</p>
+            <h2>{story.fdi}/100 FDI indicates high framing distance.</h2>
+            <p>
+              Readers are likely to leave with a different understanding depending on whether their source emphasizes responsibility, public cost, or negotiation mechanics.
+            </p>
+          </article>
+          <article className="fx-panel fx-timeline-panel">
+            <p className="fx-eyebrow">Coverage pulse</p>
+            <div className="fx-coverage-pulse" aria-label="Coverage pulse timeline">
+              <span style={{ left: "8%" }}>Reuters</span>
+              <span style={{ left: "30%" }}>NPR</span>
+              <span style={{ left: "52%" }}>FT</span>
+              <span style={{ left: "76%" }}>WSJ</span>
+            </div>
+            <small>First reports clustered within 42 minutes; divergence increased as cost and responsibility language entered headlines.</small>
+          </article>
+        </section>
+
+        <section className="fx-section fx-framing-cards">
+          <article>
+            <span>Where coverage agrees</span>
+            <h3>The talks are under deadline pressure.</h3>
+            <p>Most outlets agree negotiators are running out of time and that funding details remain unresolved.</p>
+          </article>
+          <article>
+            <span>Where framing splits</span>
+            <h3>Responsibility vs. cost exposure.</h3>
+            <p>Some headlines center historical obligation, while others foreground oversight, fiscal limits, or taxpayer risk.</p>
+          </article>
+          <article>
+            <span>What readers should notice</span>
+            <h3>The same fact can create different narratives.</h3>
+            <p>Fracture does not rank the frames as right or wrong. It shows where the emphasis shifts.</p>
+          </article>
+        </section>
+
         <section className="fx-section fx-detail-grid">
           <div className="fx-panel fx-spectrum-panel">
             <div className="fx-section-header">
@@ -590,6 +659,16 @@ export function StoryDetailMockup() {
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="fx-section fx-method-note">
+          <div>
+            <p className="fx-eyebrow">Transparency note</p>
+            <h2>How this score is being interpreted.</h2>
+          </div>
+          <p>
+            This mockup treats FDI as a reader-facing signal, not an editorial verdict. The score combines headline tone, framing language, source selection, and structural emphasis across outlets covering the same underlying event.
+          </p>
         </section>
 
         <section className="fx-section fx-trust-grid">
@@ -744,6 +823,7 @@ body:has(.fx) .ns-navbar {
 .fx button:focus-visible, .fx a:focus-visible, .fx input:focus-visible, .fx select:focus-visible { outline: 2px solid var(--fx-accent); outline-offset: 3px; }
 .fx h1, .fx h2, .fx h3 { font-family: Georgia, "Times New Roman", serif; letter-spacing: 0; color: var(--fx-text); }
 .fx p { color: var(--fx-muted); }
+.fx-section { scroll-margin-top: 154px; }
 .fx-nav {
   position: sticky;
   top: 0;
@@ -761,6 +841,17 @@ body:has(.fx) .ns-navbar {
   border-bottom: 1px solid var(--fx-border);
   backdrop-filter: blur(18px);
   box-shadow: 0 12px 44px rgba(26, 25, 24, 0.05);
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 460ms cubic-bezier(.16, 1, .3, 1),
+    opacity 280ms ease,
+    box-shadow 280ms ease;
+}
+.fx-nav.hidden {
+  transform: translateY(calc(-100% - 18px));
+  opacity: .98;
+  box-shadow: none;
 }
 .fx-nav-row,
 .fx-nav-actions,
@@ -818,6 +909,7 @@ body:has(.fx) .ns-navbar {
   gap: clamp(18px, 2.5vw, 34px);
 }
 .fx-links a,
+.fx-topic-nav a,
 .fx-topic-nav button {
   position: relative;
   border: 0;
@@ -921,6 +1013,7 @@ body:has(.fx) .ns-navbar {
   min-width: 0;
 }
 .fx-links a::after,
+.fx-topic-nav a::after,
 .fx-topic-nav button::after {
   content: "";
   position: absolute;
@@ -935,12 +1028,14 @@ body:has(.fx) .ns-navbar {
 }
 .fx-links a.active,
 .fx-links a:hover,
+.fx-topic-nav a:hover,
 .fx-topic-nav button.active,
 .fx-topic-nav button:hover {
   color: var(--fx-text);
 }
 .fx-links a.active::after,
 .fx-links a:hover::after,
+.fx-topic-nav a:hover::after,
 .fx-topic-nav button.active::after,
 .fx-topic-nav button:hover::after {
   transform: scaleX(1);
@@ -1425,6 +1520,81 @@ body:has(.fx) .ns-navbar {
   border: 1px solid var(--fx-border);
   background: var(--fx-surface);
 }
+.fx-context-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+  gap: 22px;
+}
+.fx-why-panel h2 {
+  margin: 10px 0 12px;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.02;
+}
+.fx-why-panel p:last-child,
+.fx-timeline-panel small {
+  color: var(--fx-muted);
+  font-family: Georgia, serif;
+  font-size: 18px;
+  line-height: 1.55;
+}
+.fx-coverage-pulse {
+  position: relative;
+  height: 124px;
+  margin: 24px 0 18px;
+  border-bottom: 1px solid var(--fx-border);
+}
+.fx-coverage-pulse::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--fx-accent), color-mix(in srgb, var(--fx-accent) 20%, var(--fx-border)));
+}
+.fx-coverage-pulse span {
+  position: absolute;
+  bottom: -14px;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 28px;
+  border: 1px solid var(--fx-border);
+  background: var(--fx-surface);
+  color: var(--fx-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+.fx-framing-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.fx-framing-cards article {
+  display: grid;
+  gap: 10px;
+  min-height: 220px;
+  padding: 22px;
+  border: 1px solid var(--fx-border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--fx-blue-soft) 34%, transparent), transparent 58%), var(--fx-surface);
+}
+.fx-framing-cards span {
+  color: var(--fx-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.fx-framing-cards h3 {
+  margin: 0;
+  font-size: 27px;
+  line-height: 1.04;
+}
+.fx-framing-cards p {
+  margin: 0;
+  line-height: 1.5;
+}
 .fx-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -1504,6 +1674,27 @@ body:has(.fx) .ns-navbar {
 .fx-headline-list strong {
   font-family: Georgia, serif;
   font-size: 18px;
+}
+.fx-method-note {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  padding: 28px;
+  border: 1px solid var(--fx-border);
+  background: color-mix(in srgb, var(--fx-blue-soft) 24%, var(--fx-surface));
+}
+.fx-method-note h2 {
+  margin: 10px 0 0;
+  font-size: 34px;
+  line-height: 1.05;
+}
+.fx-method-note > p {
+  margin: 0;
+  color: var(--fx-muted);
+  font-family: Georgia, serif;
+  font-size: 19px;
+  line-height: 1.6;
 }
 .fx-trust-grid {
   display: grid;
@@ -1793,7 +1984,8 @@ body:has(.fx) .ns-navbar {
   .fx-community-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fx-credibility-list { grid-template-columns: 1fr; }
   .fx-compare-panel, .fx-compare-results { grid-template-columns: 1fr; }
-  .fx-detail-hero, .fx-detail-grid, .fx-trust-grid { grid-template-columns: 1fr; }
+  .fx-detail-hero, .fx-context-grid, .fx-detail-grid, .fx-method-note, .fx-trust-grid { grid-template-columns: 1fr; }
+  .fx-framing-cards { grid-template-columns: 1fr; }
   .fx-headline-list button { grid-template-columns: 1fr; }
   .fx-footer-lede, .fx-footer-links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fx-footer-bottom { align-items: start; flex-direction: column; }
@@ -1821,6 +2013,9 @@ body:has(.fx) .ns-navbar {
   .fx-compare-panel { padding: 16px; }
   .fx-detail-hero h1 { font-size: 42px; }
   .fx-detail-score, .fx-neutral-summary, .fx-panel { padding: 18px; }
+  .fx-method-note { padding: 18px; }
+  .fx-method-note h2 { font-size: 28px; }
+  .fx-framing-cards article { min-height: auto; padding: 18px; }
   .fx-spectrum-track { margin-left: 4px; margin-right: 4px; }
   .fx-spectrum-track button { width: 38px; height: 38px; font-size: 12px; }
   .fx-footer { padding-top: 44px; }
