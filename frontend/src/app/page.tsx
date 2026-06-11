@@ -93,7 +93,7 @@ export default function HomePage() {
               <h1>See which stories are fracturing the news right now.</h1>
               <p>Fracture compares how outlets frame the same event, then makes the distance between those frames visible.</p>
               <div className="fx-hero-actions">
-                <Link href="#trending-stories" className="fx-primary-action">Explore today&apos;s fractures <ArrowUpRight size={17} /></Link>
+                <Link href="/stories" className="fx-primary-action">Explore today&apos;s fractures <ArrowUpRight size={17} /></Link>
                 <button className="fx-secondary-action" type="button"><SlidersHorizontal size={17} /> Tune my topics</button>
               </div>
             </div>
