@@ -165,6 +165,27 @@ export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
   );
 }
 
+export function PulseFooter({ updatedAt }: { updatedAt?: string | null }) {
+  const links = ["About", "Methodology", "Sources", "Privacy", "Terms", "Contact", "Careers"];
+
+  return (
+    <footer className="pulse-site-footer" aria-label="Fracture footer">
+      <div className="pulse-site-footer-brand">
+        <strong>FRACTURE</strong>
+        <p>Live editorial intelligence for tracking how stories move, split, and gather momentum across sources.</p>
+      </div>
+      <nav aria-label="Footer links">
+        {links.map((label) => <a href="#" key={label}>{label}</a>)}
+      </nav>
+      <div className="pulse-site-footer-status">
+        <span><i /> Pulse live</span>
+        <time>Updated {formatPulseTime(updatedAt)}</time>
+        <p>© {new Date().getFullYear()} Fracture Media Intelligence. All rights reserved.</p>
+      </div>
+    </footer>
+  );
+}
+
 function compactNumber(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${Math.round(value / 100) / 10}K`;
@@ -359,6 +380,77 @@ export const pulseChromeStyles = `
 .pulse-fdi-badge.is-compact em {
   display: none;
 }
+.pulse-site-footer {
+  display: grid;
+  grid-template-columns: minmax(280px, .9fr) minmax(0, 1fr) minmax(260px, .75fr);
+  gap: 28px;
+  align-items: start;
+  padding: 30px 24px 26px;
+  border-top: 1px solid rgba(252, 252, 248, .16);
+  background: var(--night);
+  color: white;
+}
+.pulse-site-footer-brand strong {
+  display: block;
+  font-size: clamp(32px, 4vw, 58px);
+  line-height: .82;
+  font-weight: 1000;
+  letter-spacing: -.055em;
+}
+.pulse-site-footer-brand p {
+  max-width: 430px;
+  margin: 14px 0 0;
+  color: rgba(252, 252, 248, .72);
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 750;
+}
+.pulse-site-footer nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 22px;
+}
+.pulse-site-footer nav a {
+  color: rgba(252, 252, 248, .82);
+  font-size: 14px;
+  font-weight: 900;
+}
+.pulse-site-footer nav a:hover {
+  color: var(--orange);
+}
+.pulse-site-footer-status {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  color: rgba(252, 252, 248, .72);
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 800;
+}
+.pulse-site-footer-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.pulse-site-footer-status i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: pulseBlink 1.65s ease-in-out infinite;
+}
+.pulse-site-footer-status time {
+  color: white;
+  font-family: "Geist Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+.pulse-site-footer-status p {
+  margin: 0;
+}
 @keyframes pulseBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.36; }
@@ -401,6 +493,15 @@ export const pulseChromeStyles = `
   }
   .pulse-actions a {
     display: none;
+  }
+  .pulse-site-footer {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 26px 16px;
+  }
+  .pulse-site-footer nav {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 }
 `;

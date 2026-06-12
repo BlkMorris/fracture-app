@@ -12,6 +12,7 @@ import {
   formatClock,
   formatPulseTime,
   PulseFdiBadge,
+  PulseFooter,
   pulseChromeStyles,
   PulseTopbar,
   storyDivergence,
@@ -232,6 +233,8 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
 
       {sourceModalArticle ? <SourceArticleModal article={sourceModalArticle} onClose={() => setSourceModalArticle(null)} /> : null}
 
+      <PulseFooter updatedAt={cluster.newestArticleAt} />
+
     </main>
   );
 }
@@ -298,6 +301,7 @@ function StoryLoading({ stats }: { stats?: ReturnType<typeof useStats>["data"] }
           {Array.from({ length: 4 }).map((_, index) => <section className={`pulse-rail-card pulse-rail-card-skeleton ${index === 0 ? "is-score" : ""}`} key={index}><span /><i /><b /></section>)}
         </aside>
       </div>
+      <PulseFooter />
     </main>
   );
 }
@@ -319,6 +323,7 @@ function StoryState({ title, body }: { title: string; body: string }) {
           </nav>
         </div>
       </section>
+      <PulseFooter />
     </main>
   );
 }

@@ -24,6 +24,7 @@ import {
   categoryLabel,
   formatPulseTime,
   PulseFdiBadge,
+  PulseFooter,
   pulseChromeStyles,
   PulseTopbar,
   storyDivergence,
@@ -206,6 +207,8 @@ export default function StoriesPage() {
         <span><Filter size={16} /> Source-aware search</span>
         <span><Globe2 size={16} /> {stats?.sourcesTracked ?? 0} sources tracked</span>
       </section>
+
+      <PulseFooter updatedAt={lead?.newestArticleAt} />
 
     </main>
   );
