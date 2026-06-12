@@ -542,12 +542,12 @@ textarea:focus-visible {
   }
 
   .pulse-skel-copy {
-    min-height: 300px;
+    min-height: 218px;
   }
 
   .pulse-skel-media {
-    height: 245px;
-    min-height: 245px;
+    height: 230px;
+    min-height: 230px;
   }
 
   .pulse-story-grid,

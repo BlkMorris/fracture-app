@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Bookmark, Clock3, Headphones, Share2, Sparkles } from "lucide-react";
 import { useStats, useStories, useStory } from "@/hooks/useStories";
@@ -24,8 +24,27 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
   const { data: stats } = useStats();
   const { data: relatedData } = useStories({ limit: 8 });
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
+  const [sourceModalArticle, setSourceModalArticle] = useState<Article | null>(null);
 
   const sortedArticles = useMemo(() => sortArticles(data?.articles ?? []), [data?.articles]);
+
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSourceModalArticle(null);
+    }
+
+    if (sourceModalArticle) {
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", handleKeydown);
+      return () => {
+        document.body.style.overflow = previousOverflow;
+        window.removeEventListener("keydown", handleKeydown);
+      };
+    }
+
+    return undefined;
+  }, [sourceModalArticle]);
 
   if (error) return <StoryState title="Story not found" body="We could not find the story you are looking for." />;
   if (isLoading || !data) return <StoryLoading stats={stats} />;
@@ -91,7 +110,10 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
                   key={article.id}
                   className={selectedArticle?.id === article.id ? "active" : ""}
                   style={{ left: `${spectrumPosition(article, index, sortedArticles.length)}%` }}
-                  onClick={() => setSelectedArticleId(article.id)}
+                  onClick={() => {
+                    setSelectedArticleId(article.id);
+                    setSourceModalArticle(article);
+                  }}
                   aria-label={`Inspect ${article.source?.name || "source"}`}
                 >
                   {sourceInitials(article.source?.name || "?")}
@@ -100,19 +122,24 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
             </div>
             <div className="pulse-source-list">
               {sortedArticles.slice(0, 5).map((article) => (
-                <article key={article.id}>
+                <button type="button" onClick={() => setSourceModalArticle(article)} key={article.id}>
                   <span>{article.source?.name || "Source"}</span>
                   <strong>{compactStoryText(cleanText(article.title), 82)}</strong>
                   <i>{article.framingType ? categoryLabel(article.framingType) : "Frame pending"}</i>
-                </article>
+                </button>
               ))}
             </div>
           </section>
 
           <section className="pulse-copy-block">
-            <p className="pulse-label">Fracture reading</p>
-            <h2>{score}/100 divergence means this story is moving across frames.</h2>
-            <p>{whyCoverageMatters(cluster, score, sortedArticles)}</p>
+            <div className="pulse-reading-label">
+              <p className="pulse-label">Fracture reading</p>
+              <span>{categoryLabel(cluster.topicCategory)}</span>
+            </div>
+            <div className="pulse-reading-body">
+              <h2>{score}/100 divergence means this story is moving across frames.</h2>
+              <p>{whyCoverageMatters(cluster, score, sortedArticles)}</p>
+            </div>
           </section>
 
           <section className="pulse-headlines">
@@ -121,20 +148,23 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
               <h2>Same story, different framing</h2>
             </div>
             <div className="pulse-headline-list">
-              {headlineRows.map((row) => (
-                <a
-                  href={row.url || "#"}
-                  target={row.url ? "_blank" : undefined}
-                  rel={row.url ? "noreferrer" : undefined}
-                  className={selectedArticle?.id === row.id ? "active" : ""}
-                  onMouseEnter={() => setSelectedArticleId(row.id)}
-                  key={row.id}
-                >
-                  <span>{row.sourceName}</span>
-                  <strong>{compactStoryText(row.headline, 108)}</strong>
-                  <small>{row.score}</small>
-                </a>
-              ))}
+              {headlineRows.map((row) => {
+                const rowArticle = sortedArticles.find((article) => article.id === row.id) ?? null;
+                return (
+                  <button
+                    type="button"
+                    className={selectedArticle?.id === row.id ? "active" : ""}
+                    onMouseEnter={() => setSelectedArticleId(row.id)}
+                    onFocus={() => setSelectedArticleId(row.id)}
+                    onClick={() => rowArticle ? setSourceModalArticle(rowArticle) : null}
+                    key={row.id}
+                  >
+                    <span>{row.sourceName}</span>
+                    <strong>{compactStoryText(row.headline, 108)}</strong>
+                    <small>{row.score}</small>
+                  </button>
+                );
+              })}
             </div>
           </section>
         </article>
@@ -143,7 +173,7 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
           <section className="pulse-rail-card pulse-score">
             <p className="pulse-label">Fracture Divergence Index</p>
             <PulseFdiBadge score={score} />
-            <span>{cluster.articleCount || sortedArticles.length} articles / {cluster.sourceCount || sortedArticles.length} sources</span>
+            <span className="pulse-score-count">{cluster.articleCount || sortedArticles.length} articles / {cluster.sourceCount || sortedArticles.length} sources</span>
             <div className="pulse-meter"><i style={{ width: `${Math.max(8, score)}%` }} /></div>
           </section>
 
@@ -168,7 +198,7 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
             <div className="pulse-selected-source">
               <strong>{selectedArticle?.source?.name || "Source"}</strong>
               <p>{compactStoryText(cleanText(selectedArticle?.title), 120) || "Select a source on the spectrum to inspect its headline."}</p>
-              {selectedArticle?.url ? <a href={selectedArticle.url} target="_blank" rel="noreferrer">Read original</a> : null}
+              {selectedArticle ? <button type="button" onClick={() => setSourceModalArticle(selectedArticle)}>View source brief</button> : null}
             </div>
           </section>
 
@@ -200,7 +230,35 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
         </aside>
       </div>
 
+      {sourceModalArticle ? <SourceArticleModal article={sourceModalArticle} onClose={() => setSourceModalArticle(null)} /> : null}
+
     </main>
+  );
+}
+
+function SourceArticleModal({ article, onClose }: { article: Article; onClose: () => void }) {
+  return (
+    <div className="pulse-source-modal" role="dialog" aria-modal="true" aria-labelledby="source-modal-title">
+      <button className="pulse-source-modal-backdrop" type="button" aria-label="Close source brief" onClick={onClose} />
+      <section className="pulse-source-modal-panel">
+        <div className="pulse-source-modal-head">
+          <p className="pulse-label">Source brief</p>
+          <button type="button" aria-label="Close source brief" onClick={onClose}>Close</button>
+        </div>
+        <div className="pulse-source-modal-meta">
+          <span>{article.source?.name || "Source"}</span>
+          <span>{article.framingType ? categoryLabel(article.framingType) : "Frame pending"}</span>
+          <time>{formatPulseTime(article.publishedAt)}</time>
+        </div>
+        <h2 id="source-modal-title">{cleanText(article.title)}</h2>
+        <p>{compactStoryText(cleanText(article.summary) || cleanText(article.title), 320)}</p>
+        <dl>
+          <div><dt>Outlet</dt><dd>{article.source?.name || "Source"}</dd></div>
+          <div><dt>Published</dt><dd>{article.publishedAt ? `${formatClock(article.publishedAt)} / ${formatPulseTime(article.publishedAt)}` : "Updating"}</dd></div>
+          <div><dt>Source URL</dt><dd>{article.url || "Unavailable"}</dd></div>
+        </dl>
+      </section>
+    </div>
   );
 }
 
@@ -326,11 +384,12 @@ ${pulseChromeStyles}
 .pulse-summary{display:grid;grid-template-columns:180px minmax(0,1fr);gap:28px;padding:28px 0;border-bottom:1px solid var(--line)}.pulse-summary p:last-child{margin:0;color:var(--night);font-size:24px;line-height:1.34;font-weight:760;letter-spacing:-.02em}.pulse-label{margin:0;color:var(--orange);font-size:11px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}
 .pulse-signal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}.pulse-signal-grid article{min-height:220px;padding:24px 22px 24px 0;border-right:1px solid var(--line)}.pulse-signal-grid article+article{padding-left:22px}.pulse-signal-grid article:last-child{border-right:0}.pulse-signal-grid span,.pulse-source-list span,.pulse-related span{color:var(--cyan);font-size:11px;font-weight:950;text-transform:uppercase}.pulse-signal-grid h2,.pulse-copy-block h2,.pulse-section-heading h2{margin:8px 0 10px;color:var(--night);font-size:28px;line-height:1.02;font-weight:950;letter-spacing:-.04em}.pulse-signal-grid p,.pulse-copy-block p,.pulse-timeline p{margin:0;color:var(--muted);line-height:1.45}
 .pulse-spectrum,.pulse-copy-block,.pulse-headlines{padding:30px 0;border-bottom:1px solid var(--line)}.pulse-section-heading{display:flex;align-items:end;justify-content:space-between;gap:22px;margin-bottom:24px}.pulse-section-heading.compact{display:block;margin-bottom:14px}.pulse-section-heading.compact h2{font-size:22px}.pulse-track{position:relative;height:138px;margin:26px 4px 32px;border-block:1px solid var(--night)}.pulse-track::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:var(--night);transform:translateY(-50%)}.pulse-track>span{position:absolute;top:12px;color:var(--muted);font-size:12px;font-weight:850}.pulse-track>span:nth-child(1){left:0}.pulse-track>span:nth-child(2){left:50%;transform:translateX(-50%)}.pulse-track>span:nth-child(3){right:0}.pulse-track button{position:absolute;top:50%;width:44px;height:44px;border:2px solid var(--night);background:var(--chalk);color:var(--night);font-weight:950;transform:translate(-50%,-50%);cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease}.pulse-track button:hover,.pulse-track button.active{background:var(--orange);color:var(--chalk);transform:translate(-50%,-50%) scale(1.08)}
-.pulse-source-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-source-list article{min-height:150px;padding:16px;background:var(--chalk)}.pulse-source-list strong{display:block;margin:8px 0 10px;font-size:15px;line-height:1.2}.pulse-source-list i{color:var(--orange);font-size:12px;font-style:normal;font-weight:850}.pulse-copy-block{display:grid;grid-template-columns:190px minmax(0,1fr);gap:26px}.pulse-copy-block h2{margin-top:0;font-size:44px;max-width:760px}.pulse-copy-block p:last-child{max-width:760px;color:var(--ink-2);font-size:18px;line-height:1.55}
-.pulse-headline-list{display:grid;gap:8px}.pulse-headline-list a{display:grid;grid-template-columns:150px minmax(0,1fr) 52px;gap:16px;align-items:center;border:1px solid var(--line);background:white;padding:14px 16px;transition:border-color 160ms ease,transform 160ms ease}.pulse-headline-list a:hover,.pulse-headline-list a.active{border-color:var(--night);transform:translateX(2px)}.pulse-headline-list span{color:var(--cyan);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-headline-list strong{font-size:16px;line-height:1.18}.pulse-headline-list small{display:grid;place-items:center;background:var(--night);color:white;width:44px;height:34px;font-weight:950}
-.pulse-rail{position:sticky;top:28px;align-self:start;display:grid;gap:14px}.pulse-rail-card{border:1px solid var(--night);background:var(--chalk);padding:16px}.pulse-score{background:var(--night);color:var(--chalk)}.pulse-score .pulse-label{color:var(--cyan)}.pulse-score .pulse-fdi-badge{margin:10px 0 8px;color:var(--night);box-shadow:5px 5px 0 var(--orange)}.pulse-score>span{display:block;color:rgba(252,252,248,.72);font-size:13px}.pulse-meter{height:8px;margin-top:16px;background:rgba(252,252,248,.18)}.pulse-meter i{display:block;height:100%;background:var(--orange)}.pulse-timeline{display:grid;border-top:1px solid var(--line)}.pulse-timeline article{position:relative;padding:13px 0 13px 18px;border-bottom:1px solid var(--line)}.pulse-timeline article::before{content:"";position:absolute;left:0;top:18px;width:8px;height:8px;border-radius:999px;background:var(--muted)}.pulse-timeline .tone-orange::before{background:var(--orange)}.pulse-timeline .tone-cyan::before{background:var(--cyan)}.pulse-timeline time{color:var(--muted);font-family:"Geist Mono","IBM Plex Mono",ui-monospace,monospace;font-size:11px}.pulse-timeline strong{display:block;margin:4px 0;color:var(--night);font-size:14px}.pulse-selected-source strong{display:block;margin:8px 0;font-size:22px;letter-spacing:-.03em}.pulse-selected-source p{color:var(--muted);line-height:1.4}.pulse-selected-source a{color:var(--orange);font-size:13px;font-weight:950}.pulse-mix{display:grid;gap:8px}.pulse-mix span{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;font-size:13px}.pulse-related{display:grid;gap:1px;background:var(--line)}.pulse-related a{display:grid;gap:5px;background:var(--chalk);padding:12px}.pulse-related strong{color:var(--night);font-size:15px;line-height:1.18}.pulse-related small{color:var(--muted)}
-.pulse-tool-skeleton,.pulse-hero-skeleton span,.pulse-hero-skeleton i,.pulse-summary-skeleton span,.pulse-summary-skeleton i,.pulse-signal-skeleton span,.pulse-signal-skeleton i,.pulse-signal-skeleton b,.pulse-spectrum-skeleton span,.pulse-spectrum-skeleton i,.pulse-spectrum-skeleton b,.pulse-rail-card-skeleton span,.pulse-rail-card-skeleton i,.pulse-rail-card-skeleton b{display:block;background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-tool-skeleton{width:58px;height:58px;border:1px solid var(--line)}.pulse-hero-skeleton{min-height:360px}.pulse-skel-kicker{width:220px;height:13px}.pulse-skel-title{width:min(880px,92%);height:78px;margin-top:24px}.pulse-skel-title.short{width:min(620px,70%);margin-top:12px}.pulse-skel-deck{width:min(720px,76%);height:22px;margin-top:24px}.pulse-skel-deck.narrow{width:min(520px,58%);margin-top:10px}.pulse-skel-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}.pulse-skel-meta i{width:132px;height:34px}.pulse-summary-skeleton span{height:14px;width:92px}.pulse-summary-skeleton i{height:24px;width:86%;margin-bottom:10px}.pulse-summary-skeleton i:last-child{width:62%}.pulse-signal-skeleton span{height:12px;width:46%}.pulse-signal-skeleton i{height:36px;width:88%;margin:18px 0 12px}.pulse-signal-skeleton b{height:58px;width:96%}.pulse-spectrum-skeleton span{height:13px;width:150px}.pulse-spectrum-skeleton i{height:138px;margin:26px 4px 32px}.pulse-spectrum-skeleton div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-spectrum-skeleton b{height:150px;background-color:var(--chalk)}.pulse-rail-card-skeleton{min-height:132px}.pulse-rail-card-skeleton.is-score{min-height:190px;background:var(--night)}.pulse-rail-card-skeleton span{width:60px;height:12px}.pulse-rail-card-skeleton i{width:72%;height:42px;margin:16px 0}.pulse-rail-card-skeleton b{width:100%;height:11px}.pulse-rail-card-skeleton.is-score span,.pulse-rail-card-skeleton.is-score i,.pulse-rail-card-skeleton.is-score b{background:linear-gradient(90deg,rgba(252,252,248,.1),rgba(217,212,204,.48),rgba(252,252,248,.1));background-size:200% 100%}.pulse-state{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:48px 18px}.pulse-state>div{width:min(760px,100%);border:1px solid var(--night);background:white;padding:38px;box-shadow:10px 10px 0 var(--orange)}.pulse-state h1{max-width:660px;margin:10px 0 12px;font-size:clamp(44px,6vw,82px);line-height:.9;font-weight:1000;letter-spacing:-.06em}.pulse-state p:not(.pulse-label){max-width:520px;margin:0;color:var(--muted);font-size:18px;line-height:1.42}.pulse-state nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.pulse-state a{border:1px solid var(--night);padding:11px 13px;font-size:14px;font-weight:950}.pulse-state a:first-child{background:var(--night);color:white}.pulse-state a:last-child{background:var(--chalk);color:var(--night)}@keyframes skeleton{to{background-position:-200% 0}}
+.pulse-source-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-source-list button{min-height:150px;padding:16px;border:0;background:var(--chalk);color:var(--night);text-align:left;cursor:pointer;transition:background 160ms ease,transform 160ms ease}.pulse-source-list button:hover{background:white;transform:translateY(-2px)}.pulse-source-list strong{display:block;margin:8px 0 10px;font-size:15px;line-height:1.2}.pulse-source-list i{color:var(--orange);font-size:12px;font-style:normal;font-weight:850}.pulse-copy-block{display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);gap:30px;align-items:start;background:linear-gradient(90deg,rgba(255,255,255,.64),rgba(255,255,255,.22));padding:34px 28px;border:1px solid var(--line);border-inline:0}.pulse-reading-label{display:grid;gap:12px;align-content:start}.pulse-reading-label span{display:inline-flex;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--soft);padding:8px 10px;color:var(--night);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-reading-body{max-width:800px}.pulse-copy-block h2{margin:0;font-size:44px;max-width:760px}.pulse-copy-block p:last-child{max-width:760px;margin:18px 0 0;color:var(--ink-2);font-size:19px;line-height:1.58}
+.pulse-headline-list{display:grid;gap:8px}.pulse-headline-list button{display:grid;grid-template-columns:150px minmax(0,1fr) 52px;gap:16px;align-items:center;border:1px solid var(--line);background:white;color:var(--night);padding:14px 16px;text-align:left;cursor:pointer;transition:border-color 160ms ease,transform 160ms ease}.pulse-headline-list button:hover,.pulse-headline-list button.active{border-color:var(--night);transform:translateX(2px)}.pulse-headline-list span{color:var(--cyan);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-headline-list strong{font-size:16px;line-height:1.18}.pulse-headline-list small{display:grid;place-items:center;background:var(--night);color:white;width:44px;height:34px;font-weight:950}
+.pulse-rail{position:sticky;top:28px;align-self:start;display:grid;gap:14px}.pulse-rail-card{border:1px solid var(--night);background:var(--chalk);padding:16px}.pulse-score{display:grid;gap:14px;background:var(--night);color:var(--chalk);padding:18px}.pulse-score .pulse-label{color:var(--cyan)}.pulse-score .pulse-fdi-badge{width:100%;grid-template-columns:minmax(0,1fr) auto;margin:0;color:var(--night);box-shadow:5px 5px 0 var(--orange)}.pulse-score .pulse-fdi-badge strong{justify-self:end}.pulse-score-count{display:block;border-top:1px solid rgba(252,252,248,.18);border-bottom:1px solid rgba(252,252,248,.18);padding:11px 0;color:rgba(252,252,248,.78);font-size:13px;font-weight:850;line-height:1.3}.pulse-meter{height:9px;background:rgba(252,252,248,.18)}.pulse-meter i{display:block;height:100%;background:var(--orange)}.pulse-timeline{display:grid;border-top:1px solid var(--line)}.pulse-timeline article{position:relative;padding:13px 0 13px 18px;border-bottom:1px solid var(--line)}.pulse-timeline article::before{content:"";position:absolute;left:0;top:18px;width:8px;height:8px;border-radius:999px;background:var(--muted)}.pulse-timeline .tone-orange::before{background:var(--orange)}.pulse-timeline .tone-cyan::before{background:var(--cyan)}.pulse-timeline time{color:var(--muted);font-family:"Geist Mono","IBM Plex Mono",ui-monospace,monospace;font-size:11px}.pulse-timeline strong{display:block;margin:4px 0;color:var(--night);font-size:14px}.pulse-selected-source strong{display:block;margin:8px 0;font-size:22px;letter-spacing:-.03em}.pulse-selected-source p{color:var(--muted);line-height:1.4}.pulse-selected-source button{border:0;background:transparent;color:var(--orange);padding:0;font-size:13px;font-weight:950;cursor:pointer}.pulse-mix{display:grid;gap:8px}.pulse-mix span{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;font-size:13px}.pulse-related{display:grid;gap:1px;background:var(--line)}.pulse-related a{display:grid;gap:5px;background:var(--chalk);padding:12px}.pulse-related strong{color:var(--night);font-size:15px;line-height:1.18}.pulse-related small{color:var(--muted)}
+.pulse-source-modal{position:fixed;inset:0;z-index:500;display:grid;place-items:center;padding:24px}.pulse-source-modal-backdrop{position:absolute;inset:0;border:0;background:rgba(16,17,20,.58);cursor:pointer}.pulse-source-modal-panel{position:relative;z-index:1;width:min(760px,100%);max-height:min(82vh,760px);overflow:auto;border:1px solid var(--night);background:var(--chalk);color:var(--night);padding:24px;box-shadow:12px 12px 0 var(--orange)}.pulse-source-modal-head{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding-bottom:14px}.pulse-source-modal-head button{border:1px solid var(--night);background:white;color:var(--night);height:36px;padding:0 12px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-source-modal-meta{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.pulse-source-modal-meta span,.pulse-source-modal-meta time{border:1px solid var(--line);background:white;padding:7px 9px;font-size:12px;font-weight:900}.pulse-source-modal-meta span:first-child{color:var(--cyan);text-transform:uppercase}.pulse-source-modal h2{max-width:680px;margin:0;font-size:clamp(34px,5vw,64px);line-height:.94;font-weight:1000;letter-spacing:-.055em}.pulse-source-modal-panel>p{max-width:620px;margin:18px 0 22px;color:var(--ink-2);font-size:18px;line-height:1.5}.pulse-source-modal dl{display:grid;gap:1px;margin:0;background:var(--line)}.pulse-source-modal dl div{display:grid;grid-template-columns:140px minmax(0,1fr);gap:14px;background:white;padding:13px}.pulse-source-modal dt{color:var(--orange);font-size:11px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}.pulse-source-modal dd{min-width:0;margin:0;color:var(--night);font-size:13px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+.pulse-tool-skeleton,.pulse-hero-skeleton span,.pulse-hero-skeleton i,.pulse-summary-skeleton span,.pulse-summary-skeleton i,.pulse-signal-skeleton span,.pulse-signal-skeleton i,.pulse-signal-skeleton b,.pulse-spectrum-skeleton span,.pulse-spectrum-skeleton i,.pulse-spectrum-skeleton b,.pulse-rail-card-skeleton span,.pulse-rail-card-skeleton i,.pulse-rail-card-skeleton b{display:block;background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-tool-skeleton{width:58px;height:58px;border:1px solid var(--line)}.pulse-hero-skeleton{min-height:360px}.pulse-skel-kicker{width:220px;height:13px}.pulse-skel-title{width:min(880px,92%);height:78px;margin-top:24px}.pulse-skel-title.short{width:min(620px,70%);margin-top:12px}.pulse-skel-deck{width:min(720px,76%);height:22px;margin-top:24px}.pulse-skel-deck.narrow{width:min(520px,58%);margin-top:10px}.pulse-skel-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}.pulse-skel-meta i{width:132px;height:34px}.pulse-summary-skeleton span{height:14px;width:92px}.pulse-summary-skeleton i{height:24px;width:86%;margin-bottom:10px}.pulse-summary-skeleton i:last-child{width:62%}.pulse-signal-skeleton span{height:12px;width:46%}.pulse-signal-skeleton i{height:36px;width:88%;margin:18px 0 12px}.pulse-signal-skeleton b{height:58px;width:96%}.pulse-spectrum-skeleton span{height:13px;width:150px}.pulse-spectrum-skeleton i{height:138px;margin:26px 4px 32px}.pulse-spectrum-skeleton div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-spectrum-skeleton b{height:150px;background-color:var(--chalk)}.pulse-rail-card-skeleton{min-height:132px}.pulse-rail-card-skeleton.is-score{min-height:224px;background:var(--night)}.pulse-rail-card-skeleton span{width:60px;height:12px}.pulse-rail-card-skeleton i{width:72%;height:42px;margin:16px 0}.pulse-rail-card-skeleton b{width:100%;height:11px}.pulse-rail-card-skeleton.is-score span,.pulse-rail-card-skeleton.is-score i,.pulse-rail-card-skeleton.is-score b{background:linear-gradient(90deg,rgba(252,252,248,.1),rgba(217,212,204,.48),rgba(252,252,248,.1));background-size:200% 100%}.pulse-state{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:48px 18px}.pulse-state>div{width:min(760px,100%);border:1px solid var(--night);background:white;padding:38px;box-shadow:10px 10px 0 var(--orange)}.pulse-state h1{max-width:660px;margin:10px 0 12px;font-size:clamp(44px,6vw,82px);line-height:.9;font-weight:1000;letter-spacing:-.06em}.pulse-state p:not(.pulse-label){max-width:520px;margin:0;color:var(--muted);font-size:18px;line-height:1.42}.pulse-state nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.pulse-state a{border:1px solid var(--night);padding:11px 13px;font-size:14px;font-weight:950}.pulse-state a:first-child{background:var(--night);color:white}.pulse-state a:last-child{background:var(--chalk);color:var(--night)}@keyframes skeleton{to{background-position:-200% 0}}
 @media(max-width:1100px){.pulse-detail-layout{grid-template-columns:minmax(0,1fr)}.pulse-tools,.pulse-rail{position:static}.pulse-tools{display:flex;order:2}.pulse-story{order:1}.pulse-rail{order:3;grid-template-columns:repeat(2,minmax(0,1fr))}.pulse-rail-card:first-child{grid-column:1/-1}.pulse-source-list,.pulse-spectrum-skeleton div{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){.pulse-detail-layout{padding-inline:14px}.pulse-summary,.pulse-copy-block{grid-template-columns:1fr}.pulse-signal-grid,.pulse-source-list,.pulse-rail,.pulse-spectrum-skeleton div{grid-template-columns:1fr}.pulse-signal-grid article,.pulse-signal-grid article+article{padding:22px 0;border-right:0;border-bottom:1px solid var(--line)}.pulse-hero h1{font-size:clamp(42px,13vw,62px);line-height:.96}.pulse-deck{font-size:19px}.pulse-tools{gap:8px}.pulse-tools button,.pulse-tool-skeleton{width:48px;height:48px}.pulse-headline-list a{grid-template-columns:1fr}.pulse-copy-block h2{font-size:34px}.pulse-section-heading{display:block}.pulse-skel-title{height:50px}.pulse-state h1{font-size:44px}.pulse-state>div{padding:26px;box-shadow:6px 6px 0 var(--orange)}}
-@media(max-width:520px){.pulse-detail{overflow-x:hidden}.pulse-detail-layout{gap:18px;padding:20px 12px 44px}.pulse-hero{padding:24px 0 26px}.pulse-kicker{font-size:11px;line-height:1.3}.pulse-hero h1{font-size:clamp(36px,11vw,54px);letter-spacing:-.045em}.pulse-deck{font-size:18px}.pulse-meta{gap:8px;margin-top:18px}.pulse-meta>span:not(.pulse-fdi-badge){max-width:100%;font-size:12px}.pulse-summary{gap:12px;padding:22px 0}.pulse-summary p:last-child{font-size:20px}.pulse-signal-grid article,.pulse-signal-grid article+article{min-height:auto;padding:20px 0}.pulse-signal-grid h2,.pulse-section-heading h2{font-size:24px}.pulse-spectrum,.pulse-copy-block,.pulse-headlines{padding:24px 0}.pulse-track{height:126px;margin:22px 22px 26px}.pulse-track button{width:38px;height:38px;font-size:12px}.pulse-track>span{font-size:11px}.pulse-source-list article{min-height:auto;padding:14px}.pulse-copy-block{gap:12px}.pulse-copy-block h2{font-size:30px;line-height:1.04}.pulse-copy-block p:last-child{font-size:17px}.pulse-headline-list a{gap:9px;padding:13px}.pulse-headline-list small{width:40px;height:30px}.pulse-tools{overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.pulse-tools::-webkit-scrollbar{display:none}.pulse-tools button,.pulse-tool-skeleton{flex:0 0 46px;width:46px;height:46px}.pulse-rail{gap:12px}.pulse-rail-card{padding:14px}.pulse-score .pulse-fdi-badge{box-shadow:4px 4px 0 var(--orange)}.pulse-selected-source strong{font-size:20px}.pulse-skel-title{width:100%;height:46px}.pulse-skel-title.short{width:72%}.pulse-skel-deck{width:88%}.pulse-skel-meta i{width:112px;height:32px}.pulse-spectrum-skeleton i{height:126px;margin:22px 4px 26px}.pulse-spectrum-skeleton b{height:96px}.pulse-rail-card-skeleton{min-height:116px}.pulse-state{padding:32px 12px}.pulse-state>div{padding:22px}.pulse-state h1{font-size:clamp(34px,10vw,48px)}.pulse-state nav{display:grid;grid-template-columns:1fr}.pulse-state a{justify-content:center;text-align:center}}
+@media(max-width:760px){.pulse-detail-layout{padding-inline:14px}.pulse-summary,.pulse-copy-block{grid-template-columns:1fr}.pulse-signal-grid,.pulse-source-list,.pulse-rail,.pulse-spectrum-skeleton div{grid-template-columns:1fr}.pulse-signal-grid article,.pulse-signal-grid article+article{padding:22px 0;border-right:0;border-bottom:1px solid var(--line)}.pulse-hero h1{font-size:clamp(42px,13vw,62px);line-height:.96}.pulse-deck{font-size:19px}.pulse-tools{gap:8px}.pulse-tools button,.pulse-tool-skeleton{width:48px;height:48px}.pulse-headline-list button{grid-template-columns:1fr}.pulse-copy-block{padding:26px 20px}.pulse-copy-block h2{font-size:34px}.pulse-section-heading{display:block}.pulse-skel-title{height:50px}.pulse-state h1{font-size:44px}.pulse-state>div{padding:26px;box-shadow:6px 6px 0 var(--orange)}}
+@media(max-width:520px){.pulse-detail{overflow-x:hidden}.pulse-detail-layout{gap:18px;padding:20px 12px 44px}.pulse-hero{padding:24px 0 26px}.pulse-kicker{font-size:11px;line-height:1.3}.pulse-hero h1{font-size:clamp(36px,11vw,54px);letter-spacing:-.045em}.pulse-deck{font-size:18px}.pulse-meta{gap:8px;margin-top:18px}.pulse-meta>span:not(.pulse-fdi-badge){max-width:100%;font-size:12px}.pulse-summary{gap:12px;padding:22px 0}.pulse-summary p:last-child{font-size:20px}.pulse-signal-grid article,.pulse-signal-grid article+article{min-height:auto;padding:20px 0}.pulse-signal-grid h2,.pulse-section-heading h2{font-size:24px}.pulse-spectrum,.pulse-headlines{padding:24px 0}.pulse-track{height:126px;margin:22px 22px 26px}.pulse-track button{width:38px;height:38px;font-size:12px}.pulse-track>span{font-size:11px}.pulse-source-list button{min-height:auto;padding:14px}.pulse-copy-block{gap:14px;padding:22px 16px}.pulse-reading-label{gap:9px}.pulse-reading-label span{padding:7px 9px;font-size:11px}.pulse-copy-block h2{font-size:30px;line-height:1.04}.pulse-copy-block p:last-child{font-size:17px;margin-top:14px}.pulse-headline-list button{gap:9px;padding:13px}.pulse-headline-list small{width:40px;height:30px}.pulse-tools{overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.pulse-tools::-webkit-scrollbar{display:none}.pulse-tools button,.pulse-tool-skeleton{flex:0 0 46px;width:46px;height:46px}.pulse-rail{gap:12px}.pulse-rail-card{padding:14px}.pulse-score{gap:12px;padding:15px}.pulse-score .pulse-fdi-badge{box-shadow:4px 4px 0 var(--orange)}.pulse-score-count{padding:10px 0}.pulse-selected-source strong{font-size:20px}.pulse-skel-title{width:100%;height:46px}.pulse-skel-title.short{width:72%}.pulse-skel-deck{width:88%}.pulse-skel-meta i{width:112px;height:32px}.pulse-spectrum-skeleton i{height:126px;margin:22px 4px 26px}.pulse-spectrum-skeleton b{height:96px}.pulse-rail-card-skeleton{min-height:116px}.pulse-rail-card-skeleton.is-score{min-height:200px}.pulse-source-modal{padding:12px}.pulse-source-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--orange)}.pulse-source-modal-head{align-items:flex-start}.pulse-source-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-source-modal-panel>p{font-size:16px}.pulse-source-modal dl div{grid-template-columns:1fr;gap:6px}.pulse-state{padding:32px 12px}.pulse-state>div{padding:22px}.pulse-state h1{font-size:clamp(34px,10vw,48px)}.pulse-state nav{display:grid;grid-template-columns:1fr}.pulse-state a{justify-content:center;text-align:center}}
 `;
