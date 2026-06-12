@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Instrument_Serif, IBM_Plex_Mono, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
-import { AppChrome } from "@/components/AppChrome";
 
 const instrumentSerif = Instrument_Serif({
   subsets: ["latin"],
@@ -47,9 +46,7 @@ export default function RootLayout({
     <html lang="en" className={`${instrumentSerif.variable} ${ibmPlexMono.variable} ${barlowCondensed.variable}`}>
       <body>
         <Providers>
-          <AppChrome>
-            <main>{children}</main>
-          </AppChrome>
+          {children}
         </Providers>
       </body>
     </html>

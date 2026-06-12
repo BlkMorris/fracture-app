@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Check, Eye, EyeOff, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { Eye, EyeOff, Check, X } from "lucide-react";
-import AuthLeftPanel from "@/components/auth/AuthLeftPanel";
-import AuthFormWrapper from "@/components/auth/AuthFormWrapper";
+import { PulseAuthShell } from "@/components/pulse/PulseAuthShell";
 
 function safeReturnUrl(url: string | null): string {
   if (!url) return "/";
@@ -34,10 +33,10 @@ function RegisterForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const allPassed = PW_RULES.every((r) => r.test(password));
+  const allPassed = PW_RULES.every((rule) => rule.test(password));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!allPassed) return;
     setError("");
     setLoading(true);
@@ -52,165 +51,55 @@ function RegisterForm() {
   };
 
   return (
-    <div className="ns-auth-layout">
-      <AuthLeftPanel />
+    <PulseAuthShell eyebrow="Create Signal" title="Create your account" subtitle="Start with access to Fracture's live story intelligence.">
+      {error ? <p className="pulse-auth-error">{error}</p> : null}
 
-      <AuthFormWrapper
-        title="Create your account"
-        subtitle="Start with free access to the Fracture platform"
-      >
-        {error && <p className="ns-form-error" style={{ marginBottom: 16 }}>{error}</p>}
+      <form onSubmit={handleSubmit}>
+        <div className="pulse-field">
+          <label htmlFor="register-name">Display Name <span>(optional)</span></label>
+          <input id="register-name" type="text" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="How you appear on Fracture" />
+        </div>
 
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: "flex", flexDirection: "column", gap: 18 }}
-        >
-          {/* Display Name */}
-          <div>
-            <label className="ns-form-label">
-              Display Name{" "}
-              <span style={{ fontWeight: 400, color: "var(--color-muted)", letterSpacing: 0 }}>
-                (optional)
-              </span>
-            </label>
-            <input
-              type="text"
-              className="ns-input"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="How you appear on Fracture"
-              style={{ height: 44 }}
-            />
+        <div className="pulse-form-divider" />
+
+        <div className="pulse-field">
+          <label htmlFor="register-email">Email</label>
+          <input id="register-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required />
+        </div>
+
+        <div className="pulse-field">
+          <label htmlFor="register-password">Password</label>
+          <div className="pulse-password-shell">
+            <input id="register-password" type={showPw ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" required />
+            <button type="button" onClick={() => setShowPw((value) => !value)} aria-label={showPw ? "Hide password" : "Show password"}>
+              {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
           </div>
 
-          <div className="ns-form-divider" />
-
-          {/* Email */}
-          <div>
-            <label className="ns-form-label">Email</label>
-            <input
-              type="email"
-              className="ns-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              style={{ height: 44 }}
-            />
-          </div>
-
-          {/* Password */}
-          <div>
-            <label className="ns-form-label">Password</label>
-            <div style={{ position: "relative" }}>
-              <input
-                type={showPw ? "text" : "password"}
-                className="ns-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                style={{ height: 44, paddingRight: 42 }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw(!showPw)}
-                aria-label={showPw ? "Hide password" : "Show password"}
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--color-muted)",
-                  padding: 0,
-                  display: "flex",
-                }}
-              >
-                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+          {password.length > 0 ? (
+            <div className="pulse-password-rules">
+              {PW_RULES.map((rule) => {
+                const pass = rule.test(password);
+                return (
+                  <span className={pass ? "is-pass" : ""} key={rule.label}>
+                    {pass ? <Check size={13} /> : <X size={13} />} {rule.label}
+                  </span>
+                );
+              })}
             </div>
+          ) : null}
+        </div>
 
-            {/* Live password checklist */}
-            {password.length > 0 && (
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-                {PW_RULES.map((rule, i) => {
-                  const pass = rule.test(password);
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                        color: pass ? "var(--color-green)" : "var(--color-muted)",
-                        transition: "color 0.15s ease",
-                      }}
-                    >
-                      {pass ? <Check size={12} /> : <X size={12} />} {rule.label}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        <button type="submit" className="pulse-submit" disabled={loading || !allPassed}>
+          {loading ? "Creating account..." : "Create Account"}
+        </button>
+      </form>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            className="ns-btn ns-btn-primary ns-btn-full"
-            style={{
-              height: 44,
-              fontSize: 14,
-              opacity: loading || !allPassed ? 0.6 : 1,
-            }}
-            disabled={loading || !allPassed}
-          >
-            {loading ? "Creating account\u2026" : "Create Account"}
-          </button>
-        </form>
-
-        {/* Login link */}
-        <p
-          style={{
-            textAlign: "center",
-            fontSize: 13,
-            color: "var(--color-secondary)",
-            marginTop: 24,
-          }}
-        >
-          Already have an account?{" "}
-          <Link
-            href={`/login${returnUrl !== "/" ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ""}`}
-            style={{
-              color: "var(--color-accent)",
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
-            Sign in
-          </Link>
-        </p>
-
-        {/* Trust footnote */}
-        <p
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            color: "var(--color-muted)",
-            textAlign: "center",
-            marginTop: 16,
-            lineHeight: 1.5,
-          }}
-        >
-          Fracture uses your account to preserve access, preferences, and reading context across the platform.
-        </p>
-      </AuthFormWrapper>
-    </div>
+      <p className="pulse-auth-switch">
+        Already have an account?{" "}
+        <Link href={`/login${returnUrl !== "/" ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ""}`}>Sign in</Link>
+      </p>
+    </PulseAuthShell>
   );
 }
 

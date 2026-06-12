@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
 import { Eye, EyeOff } from "lucide-react";
-import AuthLeftPanel from "@/components/auth/AuthLeftPanel";
-import AuthFormWrapper from "@/components/auth/AuthFormWrapper";
+import { useAuth } from "@/lib/auth-context";
+import { PulseAuthShell } from "@/components/pulse/PulseAuthShell";
 
 function safeReturnUrl(url: string | null): string {
   if (!url) return "/";
@@ -26,8 +25,8 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError("");
     setLoading(true);
     try {
@@ -41,102 +40,35 @@ function LoginForm() {
   };
 
   return (
-    <div className="ns-auth-layout">
-      <AuthLeftPanel />
+    <PulseAuthShell eyebrow="Account Access" title="Welcome back" subtitle="Sign in to your Fracture account.">
+      {error ? <p className="pulse-auth-error">{error}</p> : null}
 
-      <AuthFormWrapper
-        title="Welcome back"
-        subtitle="Sign in to your Fracture account"
-      >
-        {error && <p className="ns-form-error" style={{ marginBottom: 16 }}>{error}</p>}
+      <form onSubmit={handleSubmit}>
+        <div className="pulse-field">
+          <label htmlFor="login-email">Email</label>
+          <input id="login-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required />
+        </div>
 
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: "flex", flexDirection: "column", gap: 18 }}
-        >
-          {/* Email */}
-          <div>
-            <label className="ns-form-label">Email</label>
-            <input
-              type="email"
-              className="ns-input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              style={{ height: 44 }}
-            />
+        <div className="pulse-field">
+          <label htmlFor="login-password">Password</label>
+          <div className="pulse-password-shell">
+            <input id="login-password" type={showPw ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" required />
+            <button type="button" onClick={() => setShowPw((value) => !value)} aria-label={showPw ? "Hide password" : "Show password"}>
+              {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
           </div>
+        </div>
 
-          {/* Password */}
-          <div>
-            <label className="ns-form-label">Password</label>
-            <div style={{ position: "relative" }}>
-              <input
-                type={showPw ? "text" : "password"}
-                className="ns-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                style={{ height: 44, paddingRight: 42 }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw(!showPw)}
-                aria-label={showPw ? "Hide password" : "Show password"}
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--color-muted)",
-                  padding: 0,
-                  display: "flex",
-                }}
-              >
-                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
+        <button type="submit" disabled={loading} className="pulse-submit">
+          {loading ? "Signing in..." : "Sign In"}
+        </button>
+      </form>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="ns-btn ns-btn-primary ns-btn-full"
-            style={{ height: 44, fontSize: 14, opacity: loading ? 0.6 : 1 }}
-          >
-            {loading ? "Signing in\u2026" : "Sign In"}
-          </button>
-        </form>
-
-        {/* Register link */}
-        <p
-          style={{
-            textAlign: "center",
-            fontSize: 13,
-            color: "var(--color-secondary)",
-            marginTop: 24,
-          }}
-        >
-          Don&apos;t have an account?{" "}
-          <Link
-            href={`/register${returnUrl !== "/" ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ""}`}
-            style={{
-              color: "var(--color-accent)",
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
-            Create one
-          </Link>
-        </p>
-      </AuthFormWrapper>
-    </div>
+      <p className="pulse-auth-switch">
+        Don&apos;t have an account?{" "}
+        <Link href={`/register${returnUrl !== "/" ? `?returnUrl=${encodeURIComponent(returnUrl)}` : ""}`}>Create one</Link>
+      </p>
+    </PulseAuthShell>
   );
 }
 
