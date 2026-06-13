@@ -75,7 +75,9 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
 
         <article className="pulse-story">
           <header className="pulse-hero">
-            <div className="pulse-kicker"><Sparkles size={15} /> Story Detail / {categoryLabel(cluster.topicCategory)}</div>
+            <Link className="pulse-kicker" href={`/stories?topic=${encodeURIComponent(categoryLabel(cluster.topicCategory))}`}>
+              <Sparkles size={15} /> Story Detail / {categoryLabel(cluster.topicCategory)}
+            </Link>
             <motion.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, ease: "easeOut" }}>
               {cluster.topic}
             </motion.h1>
@@ -83,7 +85,6 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
             <div className="pulse-meta">
               <span><Clock3 size={14} /> Updated {formatPulseTime(cluster.newestArticleAt)}</span>
               <span>{cluster.sourceCount || sortedArticles.length} sources</span>
-              <PulseFdiBadge score={score} compact />
             </div>
           </header>
 

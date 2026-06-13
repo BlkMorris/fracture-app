@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -12,6 +12,7 @@ import {
   Radio,
   Search,
   Users,
+  X,
 } from "lucide-react";
 import type { PlatformStats, StoryCluster } from "@/types";
 
@@ -74,10 +75,25 @@ export function formatClock(value: string | null | undefined) {
 export function categoryLabel(value: string | null | undefined) {
   const normalized = (value || "").toLowerCase().replace(/[_-]/g, " ").trim();
   if (!normalized || normalized === "uncategorized" || normalized === "general") return "World";
-  if (/\b(world|global|international|foreign|war|conflict|geopolitic|diplomac|middle east|europe|asia)\b/.test(normalized)) return "World";
+
+  const backendCategoryLabels: Record<string, string> = {
+    politics: "Politics",
+    world: "World",
+    economy: "Business",
+    conflict: "Conflict",
+    elections: "Elections",
+    policy: "Policy",
+    geopolitics: "Geopolitics",
+  };
+  if (backendCategoryLabels[normalized]) return backendCategoryLabels[normalized];
+
+  if (/\b(election|campaign|ballot|primary|voter|voting|poll|candidate)\b/.test(normalized)) return "Elections";
+  if (/\b(geopolitic|superpower|alliance|sovereignty|territory|occupation|arms deal|espionage)\b/.test(normalized)) return "Geopolitics";
+  if (/\b(war|strike|military|attack|bomb|missile|invasion|troops|combat|airstrike|ceasefire|hostage|terrorism|nato|pentagon|defense|nuclear|sanctions|escalation|retaliation)\b/.test(normalized)) return "Conflict";
+  if (/\b(world|global|international|foreign|diplomac|middle east|europe|asia)\b/.test(normalized)) return "World";
   if (/\b(business|market|econom|finance|trade|company|stock|labor|supply chain)\b/.test(normalized)) return "Business";
   if (/\b(tech|technology|ai|software|cyber|cloud|chip|semiconductor|data|privacy)\b/.test(normalized)) return "Tech";
-  if (/\b(policy|politic|government|congress|senate|house|election|law|court|regulat)\b/.test(normalized)) return "Policy";
+  if (/\b(policy|politic|government|congress|senate|house|law|court|regulat)\b/.test(normalized)) return "Policy";
   if (/\b(health|medicine|hospital|virus|disease|public health)\b/.test(normalized)) return "Health";
   if (/\b(climate|energy|environment|weather)\b/.test(normalized)) return "Climate";
   if (/\b(sport|league|team|game)\b/.test(normalized)) return "Sports";
@@ -107,8 +123,37 @@ export function PulseMark() {
 export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const previousOverflow = useRef("");
+  const menuLinks = [
+    ["Home", "/"],
+    ["Stories", "/stories"],
+    ["Login", "/login"],
+    ["Register", "/register"],
+    ["About", "#"],
+    ["Methodology", "#"],
+    ["Sources", "#"],
+    ["Contact", "#"],
+  ] as const;
+
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+
+    if (menuOpen) {
+      previousOverflow.current = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      window.addEventListener("keydown", handleKeydown);
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow.current;
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, [menuOpen]);
 
   function openSearch() {
     setSearchOpen(true);
@@ -127,41 +172,70 @@ export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
   }
 
   return (
-    <header className="pulse-topbar">
-      <Link className="pulse-logo" href="/" aria-label="Fracture home">
-        FRACTURE
-      </Link>
-      <div className="pulse-live-badge"><span /> LIVE NOW</div>
-      <Link className="pulse-product" href="/">
-        Pulse <PulseMark />
-      </Link>
-      <div className="pulse-stats" aria-label="Live stats">
-        <span><BarChart3 size={18} />{stats?.activeStories ?? 0}</span>
-        <span title={fdiTooltip(Math.round(stats?.avgDivergence ?? 0))} aria-label={`Average ${fdiTooltip(Math.round(stats?.avgDivergence ?? 0))}`}><MessageSquare size={18} />FDI {Math.round(stats?.avgDivergence ?? 0)}</span>
-        <span><Users size={18} />{compactNumber(stats?.sourcesTracked ?? 0)}</span>
-        <span><Radio size={18} />{Math.max(0, Math.round((stats?.activeStories ?? 0) / 3))}</span>
+    <>
+      <header className="pulse-topbar">
+        <Link className="pulse-logo" href="/" aria-label="Fracture home" onClick={() => setMenuOpen(false)}>
+          FRACTURE
+        </Link>
+        <div className="pulse-live-badge"><span /> LIVE NOW</div>
+        <Link className="pulse-product" href="/" onClick={() => setMenuOpen(false)}>
+          Pulse <PulseMark />
+        </Link>
+        <div className="pulse-stats" aria-label="Live stats">
+          <span><BarChart3 size={18} />{stats?.activeStories ?? 0}</span>
+          <span title={fdiTooltip(Math.round(stats?.avgDivergence ?? 0))} aria-label={`Average ${fdiTooltip(Math.round(stats?.avgDivergence ?? 0))}`}><MessageSquare size={18} />FDI {Math.round(stats?.avgDivergence ?? 0)}</span>
+          <span><Users size={18} />{compactNumber(stats?.sourcesTracked ?? 0)}</span>
+          <span><Radio size={18} />{Math.max(0, Math.round((stats?.activeStories ?? 0) / 3))}</span>
+        </div>
+        <form className={`pulse-search-action ${searchOpen ? "is-open" : ""}`} onSubmit={submitSearch} role="search">
+          <button type="submit" aria-label={searchOpen ? "Run story search" : "Open story search"}>
+            {searchOpen ? <ChevronRight size={22} /> : <Search size={26} />}
+          </button>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onBlur={() => {
+              if (!query.trim()) setSearchOpen(false);
+            }}
+            aria-label="Search stories"
+            placeholder="Search stories"
+            tabIndex={searchOpen ? 0 : -1}
+          />
+        </form>
+        <div className="pulse-actions" aria-label="Site controls">
+          <Link href="/stories" aria-label="Saved stories"><Bookmark size={24} /></Link>
+          <button type="button" aria-label="Open menu" aria-expanded={menuOpen} aria-controls="pulse-menu" onClick={() => setMenuOpen(true)}>
+            <Menu size={28} />
+          </button>
+        </div>
+      </header>
+
+      <div className={`pulse-menu-layer ${menuOpen ? "is-open" : ""}`} aria-hidden={!menuOpen}>
+        <button className="pulse-menu-backdrop" type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)} tabIndex={menuOpen ? 0 : -1} />
+        <aside className="pulse-menu-drawer" id="pulse-menu" aria-label="Pulse menu">
+          <div className="pulse-menu-head">
+            <strong>FRACTURE</strong>
+            <button type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)}>
+              <X size={24} />
+            </button>
+          </div>
+          <nav className="pulse-menu-links" aria-label="Primary menu links">
+            {menuLinks.map(([label, href], index) => (
+              <Link href={href} onClick={() => setMenuOpen(false)} tabIndex={menuOpen ? 0 : -1} key={label}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                {label}
+                <ChevronRight size={20} />
+              </Link>
+            ))}
+          </nav>
+          <div className="pulse-menu-foot">
+            <span><i /> Live editorial system</span>
+            <p>Fast routes into the current news signal.</p>
+          </div>
+        </aside>
       </div>
-      <form className={`pulse-search-action ${searchOpen ? "is-open" : ""}`} onSubmit={submitSearch} role="search">
-        <button type="submit" aria-label={searchOpen ? "Run story search" : "Open story search"}>
-          {searchOpen ? <ChevronRight size={22} /> : <Search size={26} />}
-        </button>
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onBlur={() => {
-            if (!query.trim()) setSearchOpen(false);
-          }}
-          aria-label="Search stories"
-          placeholder="Search stories"
-          tabIndex={searchOpen ? 0 : -1}
-        />
-      </form>
-      <div className="pulse-actions" aria-label="Site controls">
-        <Link href="/stories" aria-label="Saved stories"><Bookmark size={24} /></Link>
-        <button type="button" aria-label="Open menu"><Menu size={28} /></button>
-      </div>
-    </header>
+    </>
   );
 }
 
@@ -329,6 +403,132 @@ export const pulseChromeStyles = `
   color: var(--orange);
   transform: translateY(-1px);
 }
+.pulse-menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  pointer-events: none;
+}
+.pulse-menu-layer.is-open {
+  pointer-events: auto;
+}
+.pulse-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgba(16, 17, 20, .46);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 220ms ease;
+}
+.pulse-menu-layer.is-open .pulse-menu-backdrop {
+  opacity: 1;
+}
+.pulse-menu-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(420px, 92vw);
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 22px;
+  padding: 22px;
+  border-left: 1px solid var(--night);
+  background: var(--chalk);
+  color: var(--night);
+  box-shadow: -12px 0 0 var(--orange);
+  transform: translateX(calc(100% + 16px));
+  transition: transform 280ms cubic-bezier(.16,1,.3,1);
+}
+.pulse-menu-layer.is-open .pulse-menu-drawer {
+  transform: translateX(0);
+}
+.pulse-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.pulse-menu-head strong {
+  font-size: clamp(34px, 5vw, 56px);
+  line-height: .82;
+  font-weight: 1000;
+  letter-spacing: -.055em;
+}
+.pulse-menu-head button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--night);
+  background: white;
+  color: var(--night);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pulse-menu-links {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.pulse-menu-links a {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  background: white;
+  padding: 0 13px;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: -.035em;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+.pulse-menu-links a:hover {
+  border-color: var(--night);
+  box-shadow: 5px 5px 0 var(--cyan);
+  transform: translateX(-2px);
+}
+.pulse-menu-links span {
+  color: var(--orange);
+  font-family: "Geist Mono", "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.pulse-menu-foot {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.pulse-menu-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.pulse-menu-foot i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: pulseBlink 1.65s ease-in-out infinite;
+}
+.pulse-menu-foot p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 800;
+}
 .pulse-fdi-badge {
   display: inline-grid;
   grid-template-columns: auto auto;
@@ -493,6 +693,11 @@ export const pulseChromeStyles = `
   }
   .pulse-actions a {
     display: none;
+  }
+  .pulse-menu-drawer {
+    width: 100%;
+    box-shadow: none;
+    border-left: 0;
   }
   .pulse-site-footer {
     grid-template-columns: 1fr;

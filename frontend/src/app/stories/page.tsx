@@ -33,7 +33,7 @@ import {
   storySummary,
 } from "@/components/pulse/PulseChrome";
 
-const filters = ["All", "Live", "World", "Business", "Tech", "Policy", "Health", "Climate"];
+const filters = ["All", "Live", "World", "Politics", "Policy", "Elections", "Business", "Conflict", "Geopolitics", "Tech", "Health", "Climate"];
 
 export default function StoriesPage() {
   const [query, setQuery] = useState(() => {
@@ -67,6 +67,10 @@ export default function StoriesPage() {
   const topSearches = buildLiveQueries(allStories);
   const watchlist = visibleStories.slice(0, 4);
   const lead = visibleStories[0] ?? null;
+  const filterOptions = useMemo(() => {
+    const categories = allStories.map((story) => categoryLabel(story.topicCategory)).filter(Boolean);
+    return Array.from(new Set([...filters, ...categories, activeFilter]));
+  }, [activeFilter, allStories]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -114,7 +118,7 @@ export default function StoriesPage() {
 
       <nav className="pulse-filterbar" aria-label="Search filters">
         <div>
-          {filters.map((filter) => (
+          {filterOptions.map((filter) => (
             <button className={activeFilter === filter ? "is-active" : ""} type="button" onClick={() => setActiveFilter(filter)} key={filter}>
               {filter}
             </button>
