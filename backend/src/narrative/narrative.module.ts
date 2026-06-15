@@ -18,6 +18,7 @@ import { TrendSignalService } from './services/trend-signal.service';
 import { SnapshotService } from './services/snapshot.service';
 import { SnapshotImageService } from './services/snapshot-image.service';
 import { SearchDiscoveryService } from './services/search-discovery.service';
+import { DataIntegrityService } from './services/data-integrity.service';
 import {
   NarrativeProcessor,
   NARRATIVE_QUEUE,
@@ -44,6 +45,7 @@ import { NarrativeController } from './narrative.controller';
     SnapshotService,
     SnapshotImageService,
     SearchDiscoveryService,
+    DataIntegrityService,
     NarrativeProcessor,
   ],
   exports: [
@@ -60,6 +62,7 @@ import { NarrativeController } from './narrative.controller';
     SnapshotService,
     SnapshotImageService,
     SearchDiscoveryService,
+    DataIntegrityService,
   ],
 })
 export class NarrativeModule {}

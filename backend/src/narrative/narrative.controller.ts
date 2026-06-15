@@ -28,10 +28,8 @@ import { StoryRankingService } from './services/story-ranking.service';
 import { SnapshotService } from './services/snapshot.service';
 import { SnapshotImageService } from './services/snapshot-image.service';
 import { SearchDiscoveryService } from './services/search-discovery.service';
-import {
-  QueryStoriesDto,
-  QueryTrendingDto,
-} from './dto/query-stories.dto';
+import { DataIntegrityService } from './services/data-integrity.service';
+import { QueryStoriesDto, QueryTrendingDto } from './dto/query-stories.dto';
 import {
   NARRATIVE_QUEUE,
   NarrativeJobData,
@@ -60,6 +58,7 @@ export class NarrativeController {
     private readonly snapshot: SnapshotService,
     private readonly snapshotImage: SnapshotImageService,
     private readonly searchDiscovery: SearchDiscoveryService,
+    private readonly dataIntegrity: DataIntegrityService,
   ) {}
 
   // ────────────────────────────────────────────────────
@@ -104,9 +103,7 @@ export class NarrativeController {
    */
   @Public()
   @Get('trending-topics')
-  async trendingTopics(
-    @Query('limit') limit?: string,
-  ) {
+  async trendingTopics(@Query('limit') limit?: string) {
     return this.searchDiscovery.getTrendingTopics(
       limit ? parseInt(limit, 10) : 8,
     );
@@ -182,16 +179,25 @@ export class NarrativeController {
 
     // ── TRENDING: next stories by story_score ──
     // Serve up to 20 so both the sidebar (8) and More Stories (12) have data
-    const trendingItems = ranked.slice(1, 21).map((r) => this.formatClusterSummary(r));
+    const trendingItems = ranked
+      .slice(1, 21)
+      .map((r) => this.formatClusterSummary(r));
 
     // ── MOST FRACTURED: highest FDI (not the hero) ──
     // Quality gates: require sufficient coverage and filter low-quality content
     const FRACTURED_MIN_ARTICLES = 4;
     const FRACTURED_MIN_SOURCES = 3;
     const LOW_QUALITY_PATTERNS = [
-      'video shows', 'viral video', 'caught on camera', 'watch:',
-      'shocking video', 'hilarious video', 'heartwarming video',
-      'bizarre moment', "you won't believe", 'jaw-dropping',
+      'video shows',
+      'viral video',
+      'caught on camera',
+      'watch:',
+      'shocking video',
+      'hilarious video',
+      'heartwarming video',
+      'bizarre moment',
+      "you won't believe",
+      'jaw-dropping',
     ];
 
     const fracturedCandidate = ranked
@@ -233,7 +239,8 @@ export class NarrativeController {
         (a) => a.politicalLeanScore !== null && a.source,
       );
       const fLeft = fValid[0] ?? fArticles[0];
-      const fRight = fValid[fValid.length - 1] ?? fArticles[fArticles.length - 1];
+      const fRight =
+        fValid[fValid.length - 1] ?? fArticles[fArticles.length - 1];
 
       const fDivergence = await this.divergence.computeClusterDivergence(
         fracturedCandidate.cluster.id,
@@ -275,10 +282,7 @@ export class NarrativeController {
    */
   @Public()
   @Get('cluster/:id/snapshot.svg')
-  async getSnapshotSvg(
-    @Param('id') clusterId: string,
-    @Res() res: Response,
-  ) {
+  async getSnapshotSvg(@Param('id') clusterId: string, @Res() res: Response) {
     const data = await this.snapshot.generateSnapshot(clusterId);
     if (!data) {
       throw new NotFoundException('Cluster not found or has insufficient data');
@@ -295,10 +299,7 @@ export class NarrativeController {
    */
   @Public()
   @Get('cluster/:id/snapshot.png')
-  async getSnapshotPng(
-    @Param('id') clusterId: string,
-    @Res() res: Response,
-  ) {
+  async getSnapshotPng(@Param('id') clusterId: string, @Res() res: Response) {
     const data = await this.snapshot.generateSnapshot(clusterId);
     if (!data) {
       throw new NotFoundException('Cluster not found or has insufficient data');
@@ -328,14 +329,14 @@ export class NarrativeController {
       .createQueryBuilder('s')
       .select('COUNT(*)', 'sourcesTracked')
       .where('s.isActive = true')
-      .getRawOne();
+      .getRawOne<{ sourcesTracked?: string }>();
 
     const avgDivResult = await this.clusterRepo
       .createQueryBuilder('c')
       .select('AVG(c.divergenceScore)', 'avgDiv')
       .where('c.divergenceScore IS NOT NULL')
       .andWhere('c.status != :archived', { archived: ClusterStatus.ARCHIVED })
-      .getRawOne();
+      .getRawOne<{ avgDiv?: string }>();
 
     const avgDivergence =
       Math.round(parseFloat(avgDivResult?.avgDiv ?? '0') * 10) / 10;
@@ -345,6 +346,34 @@ export class NarrativeController {
       avgDivergence,
       sourcesTracked: parseInt(sourceStats?.sourcesTracked ?? '0', 10),
     };
+  }
+
+  /** GET /api/v1/narrative/integrity */
+  @Get('integrity')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async getDataIntegrityAudit(
+    @Query('limit') limit?: string,
+    @Query('recomputeDivergence') recomputeDivergence?: string,
+  ) {
+    return this.dataIntegrity.audit({
+      limit: limit ? parseInt(limit, 10) : undefined,
+      recomputeDivergence: recomputeDivergence === 'true',
+    });
+  }
+
+  /** GET /api/v1/narrative/integrity/cluster/:id */
+  @Get('integrity/cluster/:id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async getClusterIntegrityAudit(
+    @Param('id') clusterId: string,
+    @Query('recomputeDivergence') recomputeDivergence?: string,
+  ) {
+    return this.dataIntegrity.auditCluster(
+      clusterId,
+      recomputeDivergence !== 'false',
+    );
   }
 
   /** GET /api/v1/narrative/stories */
@@ -360,7 +389,10 @@ export class NarrativeController {
       .createQueryBuilder('c')
       .where('c.articleCount >= 2')
       .andWhere('c.status != :archived', { archived: ClusterStatus.ARCHIVED })
-      .andWhere('(c.newestArticleAt >= :since OR (c.newestArticleAt IS NULL AND c.updatedAt >= :since))', { since });
+      .andWhere(
+        '(c.newestArticleAt >= :since OR (c.newestArticleAt IS NULL AND c.updatedAt >= :since))',
+        { since },
+      );
 
     if (search) {
       qb.andWhere('c.topic ILIKE :search', { search: `%${search}%` });
@@ -390,6 +422,7 @@ export class NarrativeController {
         isFractured: c.isFractured,
         status: c.status,
         topicKeywords: c.topicKeywords,
+        topicCategory: c.topicCategory,
         velocityScore: c.velocityScore,
         imageUrl: c.imageUrl ?? null,
       })),
@@ -436,6 +469,7 @@ export class NarrativeController {
         isFractured: false,
         status: 'ACTIVE',
         topicKeywords: [],
+        topicCategory: 'uncategorized',
         velocityScore: null,
         _fallback: true,
       })),
@@ -629,9 +663,7 @@ export class NarrativeController {
    * This gives us a keyword-free clustering that leverages the NLP
    * analysis we already run on every article.
    */
-  private detectNarrativeFrames(
-    articles: Article[],
-  ): Array<{
+  private detectNarrativeFrames(articles: Article[]): Array<{
     id: string;
     title: string;
     summary: string;
@@ -789,7 +821,8 @@ export class NarrativeController {
     return topFrames.map((frame, idx) => {
       const label = FRAME_LABELS[frame.key] ?? {
         title: frame.key.replace('_', ' — '),
-        summaryTemplate: 'Coverage takes a distinct narrative angle on this story.',
+        summaryTemplate:
+          'Coverage takes a distinct narrative angle on this story.',
       };
 
       // Deduplicated sources
@@ -915,8 +948,7 @@ export class NarrativeController {
       }))
       .sort(
         (a, b) =>
-          new Date(a.publishedAt).getTime() -
-          new Date(b.publishedAt).getTime(),
+          new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime(),
       );
   }
 
@@ -929,7 +961,10 @@ export class NarrativeController {
       string,
       {
         region: string;
-        sources: Map<string, { name: string; slug: string; lean: number; articleCount: number }>;
+        sources: Map<
+          string,
+          { name: string; slug: string; lean: number; articleCount: number }
+        >;
         totalLean: number;
         articleCount: number;
       }

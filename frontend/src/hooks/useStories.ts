@@ -2,7 +2,7 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Hooks — TanStack Query data fetching hooks
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { HomepageData, StoryDetail, StoryCluster, PlatformStats, SearchResult } from '@/types';
 
 async function apiFetch<T>(url: string): Promise<T> {
@@ -29,6 +29,7 @@ export function useStories(params?: { page?: number; limit?: number; search?: st
     return useQuery<{ stories: StoryCluster[]; total: number }>({
         queryKey: ['stories', params],
         queryFn: () => apiFetch(`/api/stories${qs ? `?${qs}` : ''}`),
+        placeholderData: keepPreviousData,
     });
 }
 

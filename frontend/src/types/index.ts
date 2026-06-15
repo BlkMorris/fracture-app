@@ -117,6 +117,8 @@ export interface TimelineEntry {
 // ── Homepage ─────────────────────────────────────────
 export interface HomepageData {
   hero: StoryCluster | null;
+  heroHeadline: string | null;
+  heroArticle: LatestArticle | null;
   trending: StoryCluster[];
   mostFractured: StoryCluster | null;
   latest: LatestArticle[];

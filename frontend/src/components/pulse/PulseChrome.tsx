@@ -100,6 +100,28 @@ export function categoryLabel(value: string | null | undefined) {
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+export function storyCategoryLabel(story: Pick<StoryCluster, "topic" | "topicCategory" | "topicKeywords">) {
+  const base = categoryLabel(story.topicCategory);
+  const text = `${story.topic} ${(story.topicKeywords ?? []).join(" ")}`.toLowerCase();
+  const inferred = inferStoryCategory(text);
+
+  if (inferred && ["World", "Politics", "Policy"].includes(base)) return inferred;
+  return inferred ?? base;
+}
+
+export function inferStoryCategory(text: string) {
+  if (/\b(ai|artificial intelligence|chip|semiconductor|software|cyber|cloud|data|privacy|tech|technology)\b/.test(text)) return "Tech";
+  if (/\b(market|markets|stock|stocks|inflation|recession|fed|rate|rates|trade|tariff|economy|economic|finance|bank|jobs|labor|supply chain|oil|crypto|bitcoin)\b/.test(text)) return "Business";
+  if (/\b(election|elections|campaign|ballot|primary|voter|voting|poll|polls|candidate|candidates)\b/.test(text)) return "Elections";
+  if (/\b(climate|energy|environment|weather|epa|emissions|wildfire|storm|storms)\b/.test(text)) return "Climate";
+  if (/\b(health|medicine|hospital|virus|disease|public health|medicaid|medicare|vaccine|vaccines)\b/.test(text)) return "Health";
+  if (/\b(war|strike|strikes|military|attack|attacks|bomb|missile|invasion|troops|combat|airstrike|ceasefire|hostage|terrorism|nato|pentagon|defense|nuclear|sanctions|escalation|retaliation|ukraine|russia|gaza|israel|hamas|iran)\b/.test(text)) return "Conflict";
+  if (/\b(geopolitic|geopolitics|superpower|alliance|sovereignty|territory|occupation|arms deal|espionage|diplomat|diplomatic|summit|g7|g20|brics)\b/.test(text)) return "Geopolitics";
+  if (/\b(policy|regulation|regulations|executive order|bill|law|court|reform|mandate|budget|funding|congress|senate|house)\b/.test(text)) return "Policy";
+  if (/\b(sport|sports|league|team|game|tournament|match|season)\b/.test(text)) return "Sports";
+  return null;
+}
+
 export function PulseFdiBadge({ score, compact = false }: { score: number; compact?: boolean }) {
   const level = fdiLevel(score);
   return (
@@ -529,6 +551,59 @@ export const pulseChromeStyles = `
   line-height: 1.35;
   font-weight: 800;
 }
+.pulse-tabs {
+  min-height: 57px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 24px;
+}
+.pulse-tabs div {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(28px, 4vw, 56px);
+}
+.pulse-tabs a {
+  position: relative;
+  padding: 0 0 13px;
+  font-size: 18px;
+  font-weight: 900;
+  transition: color 160ms ease, transform 160ms ease;
+}
+.pulse-tabs a:hover {
+  color: var(--orange);
+  transform: translateY(-1px);
+}
+.pulse-tabs a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--orange);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 240ms cubic-bezier(.16,1,.3,1);
+}
+.pulse-tabs a.is-active::after {
+  transform: scaleX(1);
+}
+.pulse-tabs p {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 26.5% 12px 0;
+  font-size: 16px;
+  white-space: nowrap;
+}
+.pulse-tabs p span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--cyan);
+}
 .pulse-fdi-badge {
   display: inline-grid;
   grid-template-columns: auto auto;
@@ -707,6 +782,45 @@ export const pulseChromeStyles = `
   .pulse-site-footer nav {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+  .pulse-tabs {
+    align-items: start;
+    flex-direction: column;
+    padding: 14px 16px 0;
+  }
+  .pulse-tabs div {
+    width: 100%;
+    justify-content: space-between;
+    gap: 18px;
+  }
+  .pulse-tabs a {
+    font-size: 16px;
+  }
+  .pulse-tabs p {
+    margin-right: 0;
+  }
+}
+@media (max-width: 520px) {
+  .pulse-tabs {
+    gap: 10px;
+    padding: 12px 12px 0;
+  }
+  .pulse-tabs div {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 1px;
+    scrollbar-width: none;
+  }
+  .pulse-tabs div::-webkit-scrollbar {
+    display: none;
+  }
+  .pulse-tabs a {
+    flex: 0 0 auto;
+    font-size: 15px;
+  }
+  .pulse-tabs p {
+    font-size: 13px;
+    white-space: normal;
   }
 }
 `;

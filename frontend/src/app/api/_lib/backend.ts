@@ -126,24 +126,31 @@ export function transformHomepageResponse(raw: any): HomepageData {
     const fracturedRaw = raw.mostFractured ?? raw.fractured;
     const fracturedCluster = fracturedRaw?.cluster ?? fracturedRaw;
     const mostFractured = fracturedCluster ? transformCluster(fracturedCluster) : null;
+    const heroArticleRaw = raw.hero?.leftArticle ?? raw.hero?.rightArticle ?? raw.hero?.articles?.[0] ?? null;
 
     return {
         hero,
+        heroHeadline: raw.hero?.headline ?? null,
+        heroArticle: heroArticleRaw ? transformLatestArticle(heroArticleRaw, hero?.id ?? null) : null,
         trending,
         mostFractured,
-        latest: (raw.latest ?? []).map((a: any): LatestArticle => ({
-            id: a.id,
-            title: a.title,
-            summary: a.summary ?? null,
-            imageUrl: a.imageUrl ?? null,
-            publishedAt: a.publishedAt ?? null,
-            source: {
-                name: a.source?.name ?? a.sourceName ?? 'Unknown',
-                slug: a.source?.slug ?? a.sourceSlug ?? 'unknown',
-            },
-            storyClusterId: a.storyClusterId ?? null,
-        })),
+        latest: (raw.latest ?? []).map((a: any): LatestArticle => transformLatestArticle(a)),
         breakingCount: raw.breakingCount ?? 0,
+    };
+}
+
+function transformLatestArticle(a: any, storyClusterId: string | null = null): LatestArticle {
+    return {
+        id: a.id,
+        title: a.title,
+        summary: a.summary ?? null,
+        imageUrl: a.imageUrl ?? null,
+        publishedAt: a.publishedAt ?? null,
+        source: {
+            name: a.source?.name ?? a.sourceName ?? 'Unknown',
+            slug: a.source?.slug ?? a.sourceSlug ?? 'unknown',
+        },
+        storyClusterId: a.storyClusterId ?? storyClusterId,
     };
 }
 
