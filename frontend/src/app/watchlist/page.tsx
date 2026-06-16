@@ -11,9 +11,9 @@ import type { StoryCluster } from "@/types";
 import { PulseHomeTabs } from "@/components/pulse/PulseHomeTabs";
 import {
   compactStoryText,
-  formatPulseTime,
   PulseFdiBadge,
   PulseFooter,
+  PulseRelativeTime,
   pulseChromeStyles,
   PulseTopbar,
   storyCategoryLabel,
@@ -87,7 +87,7 @@ export default function WatchlistPage() {
             <section className="pulse-watch-board" aria-label="Pinned watchlist stories">
               <div className="pulse-board-head">
                 <span><Radar size={16} /> Monitoring</span>
-                <p>{watchStories.length} stories / Updated {formatPulseTime(updatedAt)} <i /></p>
+                <p>{watchStories.length} stories / Updated <PulseRelativeTime value={updatedAt} /> <i /></p>
               </div>
               {watchStories.length ? (
                 <div className="pulse-watch-grid">
@@ -124,7 +124,7 @@ function SignedOutWatchlist({ updatedAt }: { updatedAt?: string | null }) {
         <div className="pulse-lock-card">
           <LockKeyhole size={26} />
           <strong>Watchlist locked</strong>
-          <span>Updated {formatPulseTime(updatedAt)}</span>
+          <span>Updated <PulseRelativeTime value={updatedAt} /></span>
         </div>
         {["World", "Business", "Tech", "Policy"].map((topic, index) => (
           <div className={`pulse-preview-row ${index % 2 ? "is-cyan" : "is-orange"}`} key={topic}>
@@ -145,7 +145,7 @@ function WatchStory({ story }: { story: StoryCluster }) {
         {story.status === "BREAKING" ? <span>LIVE</span> : null}
       </div>
       <div className="pulse-watch-copy">
-        <p><b>{storyCategoryLabel(story)}</b><span />{formatPulseTime(story.newestArticleAt)}</p>
+        <p><b>{storyCategoryLabel(story)}</b><span /><PulseRelativeTime value={story.newestArticleAt} /></p>
         <h2>{compactStoryText(story.topic, 96)}</h2>
         <p>{storySummary(story, 112)}</p>
       </div>

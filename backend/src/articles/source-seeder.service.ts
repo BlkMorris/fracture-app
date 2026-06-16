@@ -14,7 +14,7 @@ import { SourceTier } from '../common/enums';
  * This ensures feed-URL fixes (e.g. CNN) propagate automatically
  * without manual DB intervention.
  */
-const DEFAULT_SOURCES: Array<{
+export interface DefaultSourceDefinition {
   name: string;
   slug: string;
   url: string;
@@ -25,7 +25,24 @@ const DEFAULT_SOURCES: Array<{
   reliabilityScore: number;
   country: string;
   region: string;
-}> = [
+}
+
+export const PHASE_4_SOURCE_SLUGS = [
+  'abc-news',
+  'cbs-news',
+  'nbc-news',
+  'pbs-newshour',
+  'new-york-times',
+  'time',
+  'propublica',
+  'al-jazeera',
+  'vox',
+  'reason',
+  'washington-times',
+  'marketwatch',
+] as const;
+
+export const DEFAULT_SOURCES: DefaultSourceDefinition[] = [
   // ── Existing sources (with corrected feeds) ───────────
   {
     name: 'BBC News',
@@ -201,6 +218,152 @@ const DEFAULT_SOURCES: Array<{
     country: 'US',
     region: 'North America',
   },
+
+  // ── Phase 4 — Broader live source coverage ────────────
+  {
+    name: 'ABC News',
+    slug: 'abc-news',
+    url: 'https://abcnews.com',
+    rssFeedUrl: 'https://abcnews.com/abcnews/topstories',
+    tier: SourceTier.TIER_1_STANDARD,
+    politicalLeanPrior: -0.1,
+    establishmentPrior: 0.6,
+    reliabilityScore: 0.75,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'CBS News',
+    slug: 'cbs-news',
+    url: 'https://www.cbsnews.com',
+    rssFeedUrl: 'https://www.cbsnews.com/latest/rss/main',
+    tier: SourceTier.TIER_1_STANDARD,
+    politicalLeanPrior: -0.1,
+    establishmentPrior: 0.6,
+    reliabilityScore: 0.75,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'NBC News',
+    slug: 'nbc-news',
+    url: 'https://www.nbcnews.com',
+    rssFeedUrl: 'https://feeds.nbcnews.com/nbcnews/public/news',
+    tier: SourceTier.TIER_1_STANDARD,
+    politicalLeanPrior: -0.2,
+    establishmentPrior: 0.6,
+    reliabilityScore: 0.75,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'PBS NewsHour',
+    slug: 'pbs-newshour',
+    url: 'https://www.pbs.org/newshour',
+    rssFeedUrl: 'https://www.pbs.org/newshour/feeds/rss/headlines',
+    tier: SourceTier.TIER_1_STANDARD,
+    politicalLeanPrior: -0.1,
+    establishmentPrior: 0.7,
+    reliabilityScore: 0.9,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'The New York Times',
+    slug: 'new-york-times',
+    url: 'https://www.nytimes.com',
+    rssFeedUrl: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml',
+    tier: SourceTier.TIER_1_STANDARD,
+    politicalLeanPrior: -0.35,
+    establishmentPrior: 0.75,
+    reliabilityScore: 0.85,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'TIME',
+    slug: 'time',
+    url: 'https://time.com',
+    rssFeedUrl: 'https://time.com/feed/',
+    tier: SourceTier.TIER_1_STANDARD,
+    politicalLeanPrior: -0.2,
+    establishmentPrior: 0.55,
+    reliabilityScore: 0.75,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'ProPublica',
+    slug: 'propublica',
+    url: 'https://www.propublica.org',
+    rssFeedUrl: 'https://www.propublica.org/feeds/propublica/main',
+    tier: SourceTier.TIER_2,
+    politicalLeanPrior: -0.25,
+    establishmentPrior: 0.35,
+    reliabilityScore: 0.88,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'Al Jazeera',
+    slug: 'al-jazeera',
+    url: 'https://www.aljazeera.com',
+    rssFeedUrl: 'https://www.aljazeera.com/xml/rss/all.xml',
+    tier: SourceTier.TIER_1_STANDARD,
+    politicalLeanPrior: -0.05,
+    establishmentPrior: 0.2,
+    reliabilityScore: 0.75,
+    country: 'QA',
+    region: 'Middle East',
+  },
+  {
+    name: 'Vox',
+    slug: 'vox',
+    url: 'https://www.vox.com',
+    rssFeedUrl: 'https://www.vox.com/rss/index.xml',
+    tier: SourceTier.TIER_2,
+    politicalLeanPrior: -0.5,
+    establishmentPrior: 0.35,
+    reliabilityScore: 0.7,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'Reason',
+    slug: 'reason',
+    url: 'https://reason.com',
+    rssFeedUrl: 'https://reason.com/feed/',
+    tier: SourceTier.TIER_2,
+    politicalLeanPrior: 0.45,
+    establishmentPrior: -0.45,
+    reliabilityScore: 0.65,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'The Washington Times',
+    slug: 'washington-times',
+    url: 'https://www.washingtontimes.com',
+    rssFeedUrl: 'https://www.washingtontimes.com/rss/headlines/news/',
+    tier: SourceTier.TIER_2,
+    politicalLeanPrior: 0.6,
+    establishmentPrior: 0.25,
+    reliabilityScore: 0.55,
+    country: 'US',
+    region: 'North America',
+  },
+  {
+    name: 'MarketWatch',
+    slug: 'marketwatch',
+    url: 'https://www.marketwatch.com',
+    rssFeedUrl: 'https://feeds.content.dowjones.io/public/rss/mw_topstories',
+    tier: SourceTier.TIER_2,
+    politicalLeanPrior: 0.05,
+    establishmentPrior: 0.65,
+    reliabilityScore: 0.75,
+    country: 'US',
+    region: 'North America',
+  },
 ];
 
 @Injectable()
@@ -234,27 +397,7 @@ export class SourceSeederService implements OnApplicationBootstrap {
         this.logger.log(`  + Created source: ${def.name} (${def.slug})`);
         created++;
       } else {
-        // Existing source — update feed URL and metadata if changed
-        let changed = false;
-        if (existing.rssFeedUrl !== def.rssFeedUrl) {
-          this.logger.log(
-            `  ~ Updating RSS feed for ${def.name}: ${existing.rssFeedUrl} → ${def.rssFeedUrl}`,
-          );
-          existing.rssFeedUrl = def.rssFeedUrl;
-          changed = true;
-        }
-        if (existing.url !== def.url) {
-          existing.url = def.url;
-          changed = true;
-        }
-        if (existing.country !== def.country) {
-          existing.country = def.country;
-          changed = true;
-        }
-        if (existing.region !== def.region) {
-          existing.region = def.region;
-          changed = true;
-        }
+        const changed = this.applySourceDefinition(existing, def);
         if (changed) {
           await this.sourceRepo.save(existing);
           updated++;
@@ -266,5 +409,34 @@ export class SourceSeederService implements OnApplicationBootstrap {
     this.logger.log(
       `Source seeding complete: ${created} created, ${updated} updated, ${total} active total`,
     );
+  }
+
+  private applySourceDefinition(
+    source: Source,
+    definition: DefaultSourceDefinition,
+  ) {
+    let changed = false;
+    const updates: Partial<DefaultSourceDefinition> = {};
+
+    for (const key of Object.keys(definition) as Array<
+      keyof DefaultSourceDefinition
+    >) {
+      if (source[key] !== definition[key]) {
+        updates[key] = definition[key] as never;
+        changed = true;
+      }
+    }
+
+    if (!source.isActive) {
+      source.isActive = true;
+      changed = true;
+    }
+
+    if (changed) {
+      Object.assign(source, updates);
+      this.logger.log(`  ~ Updated source metadata: ${definition.name}`);
+    }
+
+    return changed;
   }
 }

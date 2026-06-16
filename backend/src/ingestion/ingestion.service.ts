@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuid } from 'uuid';
 import { Source } from '../articles/entities/source.entity';
+import { PHASE_4_SOURCE_SLUGS } from '../articles/source-seeder.service';
 import { RssAdapter } from './adapters/rss.adapter';
 import { NewsApiAdapter } from './adapters/newsapi.adapter';
 import { RawArticle } from './interfaces';
@@ -35,34 +36,94 @@ export class IngestionService {
 
     for (const source of sources) {
       try {
-        let articles: RawArticle[] = [];
-
-        if (source.rssFeedUrl) {
-          articles = await this.rssAdapter.fetchArticles(
-            source.slug,
-            source.rssFeedUrl,
-          );
-        } else if (source.url) {
-          // Fallback to NewsAPI for sources without RSS
-          articles = await this.newsApiAdapter.fetchArticles(
-            source.slug,
-            `everything?domains=${new URL(source.url).hostname}`,
-          );
-        }
+        const articles = await this.fetchArticlesForSource(source);
 
         if (articles.length > 0) {
           await this.enqueueArticles(articles);
           totalQueued += articles.length;
         }
       } catch (error) {
-        this.logger.error(
-          `Fetch failed for source ${source.slug}: ${error.message}`,
-        );
+        const message = error instanceof Error ? error.message : 'Fetch failed';
+        this.logger.error(`Fetch failed for source ${source.slug}: ${message}`);
       }
     }
 
     this.logger.log(`Fetch cycle complete: ${totalQueued} articles queued`);
     return { queued: totalQueued };
+  }
+
+  /**
+   * Fetch only the newly expanded Phase 4 source set.
+   * Useful for verifying new feeds without forcing a full-source cycle.
+   */
+  async fetchExpandedSources(): Promise<{
+    queued: number;
+    sources: SourceFetchResult[];
+  }> {
+    return this.fetchSources([...PHASE_4_SOURCE_SLUGS]);
+  }
+
+  /**
+   * Fetch a controlled source set by slug.
+   */
+  async fetchSources(slugs: string[]): Promise<{
+    queued: number;
+    sources: SourceFetchResult[];
+  }> {
+    const uniqueSlugs = Array.from(
+      new Set(slugs.map((slug) => slug.trim()).filter(Boolean)),
+    );
+    const sources = await this.sourceRepo.find({
+      where: uniqueSlugs.map((slug) => ({ slug })),
+    });
+    const sourceMap = new Map(sources.map((source) => [source.slug, source]));
+    const results: SourceFetchResult[] = [];
+    let totalQueued = 0;
+
+    for (const slug of uniqueSlugs) {
+      const source = sourceMap.get(slug);
+      if (!source) {
+        results.push({
+          slug,
+          queued: 0,
+          status: 'missing',
+          message: 'Source is not seeded in the database.',
+        });
+        continue;
+      }
+
+      if (!source.isActive) {
+        results.push({
+          slug,
+          queued: 0,
+          status: 'inactive',
+          message: 'Source exists but is inactive.',
+        });
+        continue;
+      }
+
+      try {
+        const articles = await this.fetchArticlesForSource(source);
+        if (articles.length > 0) {
+          await this.enqueueArticles(articles);
+          totalQueued += articles.length;
+        }
+        results.push({
+          slug,
+          queued: articles.length,
+          status: 'queued',
+        });
+      } catch (error) {
+        results.push({
+          slug,
+          queued: 0,
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Fetch failed',
+        });
+      }
+    }
+
+    return { queued: totalQueued, sources: results };
   }
 
   /**
@@ -74,19 +135,7 @@ export class IngestionService {
       throw new Error(`Source not found: ${slug}`);
     }
 
-    let articles: RawArticle[] = [];
-
-    if (source.rssFeedUrl) {
-      articles = await this.rssAdapter.fetchArticles(
-        source.slug,
-        source.rssFeedUrl,
-      );
-    } else {
-      articles = await this.newsApiAdapter.fetchArticles(
-        source.slug,
-        `everything?domains=${new URL(source.url).hostname}`,
-      );
-    }
+    const articles = await this.fetchArticlesForSource(source);
 
     if (articles.length > 0) {
       await this.enqueueArticles(articles);
@@ -115,10 +164,23 @@ export class IngestionService {
         removeOnFail: 500,
       },
     );
-    this.logger.log(
-      `Enqueued batch ${batchId}: ${articles.length} articles`,
-    );
+    this.logger.log(`Enqueued batch ${batchId}: ${articles.length} articles`);
     return batchId;
+  }
+
+  private async fetchArticlesForSource(source: Source): Promise<RawArticle[]> {
+    if (source.rssFeedUrl) {
+      return this.rssAdapter.fetchArticles(source.slug, source.rssFeedUrl);
+    }
+
+    if (!source.url) {
+      throw new Error(`Source ${source.slug} has no RSS feed or outlet URL.`);
+    }
+
+    return this.newsApiAdapter.fetchArticles(
+      source.slug,
+      `everything?domains=${new URL(source.url).hostname}`,
+    );
   }
 
   /**
@@ -134,4 +196,11 @@ export class IngestionService {
     ]);
     return { waiting, active, completed, failed, delayed };
   }
+}
+
+export interface SourceFetchResult {
+  slug: string;
+  queued: number;
+  status: 'queued' | 'missing' | 'inactive' | 'error';
+  message?: string;
 }

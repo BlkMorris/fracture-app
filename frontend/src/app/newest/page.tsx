@@ -11,9 +11,9 @@ import { PulseHomeTabs } from "@/components/pulse/PulseHomeTabs";
 import {
   compactStoryText,
   formatClock,
-  formatPulseTime,
   PulseFdiBadge,
   PulseFooter,
+  PulseRelativeTime,
   pulseChromeStyles,
   PulseTopbar,
   storyCategoryLabel,
@@ -140,7 +140,7 @@ export default function NewestPage() {
         <section className="pulse-feed" aria-label="Chronological story feed">
           <div className="pulse-feed-head">
             <span><Clock3 size={16} /> Chronological</span>
-            <p>{loading ? "Loading" : error ? "Unavailable" : `${visibleStories.length} stories`} / Updated {formatPulseTime(newest?.newestArticleAt)} <i /></p>
+            <p>{loading ? "Loading" : error ? "Unavailable" : `${visibleStories.length} stories`} / Updated <PulseRelativeTime value={newest?.newestArticleAt} /> <i /></p>
           </div>
 
           {error ? (
@@ -182,7 +182,7 @@ function NewestStory({ story, index }: { story: StoryCluster; index: number }) {
         {story.status === "BREAKING" ? <span>LIVE</span> : null}
       </div>
       <div className="pulse-feed-copy">
-        <p><b>{storyCategoryLabel(story)}</b><span />{formatPulseTime(story.newestArticleAt)}<span />{story.sourceCount} sources</p>
+        <p><b>{storyCategoryLabel(story)}</b><span /><PulseRelativeTime value={story.newestArticleAt} /><span />{story.sourceCount} sources</p>
         <h2>{compactStoryText(story.topic, 120)}</h2>
         <p>{storySummary(story, 142)}</p>
       </div>

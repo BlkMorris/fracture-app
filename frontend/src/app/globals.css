@@ -70,7 +70,11 @@ textarea:focus-visible {
 .pulse-stories,
 .pulse-detail,
 .pulse-auth,
-.pulse-not-found {
+.pulse-not-found,
+.pulse-info,
+.pulse-live-page,
+.pulse-newest,
+.pulse-watch-page {
   --chalk: var(--pulse-chalk);
   --night: var(--pulse-night);
   --orange: var(--pulse-orange);
@@ -99,7 +103,19 @@ textarea:focus-visible {
 .pulse-auth *::after,
 .pulse-not-found *,
 .pulse-not-found *::before,
-.pulse-not-found *::after {
+.pulse-not-found *::after,
+.pulse-info *,
+.pulse-info *::before,
+.pulse-info *::after,
+.pulse-live-page *,
+.pulse-live-page *::before,
+.pulse-live-page *::after,
+.pulse-newest *,
+.pulse-newest *::before,
+.pulse-newest *::after,
+.pulse-watch-page *,
+.pulse-watch-page *::before,
+.pulse-watch-page *::after {
   box-sizing: border-box;
 }
 
@@ -107,7 +123,11 @@ textarea:focus-visible {
 .pulse-stories a,
 .pulse-detail a,
 .pulse-auth a,
-.pulse-not-found a {
+.pulse-not-found a,
+.pulse-info a,
+.pulse-live-page a,
+.pulse-newest a,
+.pulse-watch-page a {
   color: inherit;
   text-decoration: none;
 }
@@ -115,7 +135,7 @@ textarea:focus-visible {
 .pulse-topbar {
   height: 88px;
   display: grid;
-  grid-template-columns: minmax(250px, 1fr) auto minmax(160px, 0.7fr) minmax(360px, 1fr) auto auto;
+  grid-template-columns: minmax(250px, 1fr) auto minmax(360px, 1fr) auto auto;
   align-items: center;
   gap: 28px;
   padding: 0 24px;
@@ -150,15 +170,6 @@ textarea:focus-visible {
   border-radius: 999px;
   background: currentColor;
   display: inline-block;
-}
-
-.pulse-product {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 20px;
-  font-weight: 900;
 }
 
 .pulse-wordmark {
@@ -234,6 +245,59 @@ textarea:focus-visible {
   justify-content: space-between;
   gap: 24px;
   padding: 0 24px;
+}
+
+.pulse-tab-list {
+  --pulse-tab-gap: clamp(28px, 4vw, 56px);
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(104px, max-content));
+  align-items: center;
+  gap: var(--pulse-tab-gap);
+}
+
+.pulse-tabs a {
+  color: rgba(16, 17, 20, 0.72);
+  text-align: center;
+  transition: color 280ms cubic-bezier(.22, 1, .36, 1), transform 280ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.pulse-tabs a.is-active {
+  color: var(--night);
+  transform: translateY(-1px);
+}
+
+.pulse-tab-indicator {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: calc((100% - var(--pulse-tab-gap) - var(--pulse-tab-gap)) / 3);
+  height: 2px;
+  background: var(--orange);
+  transform: translateX(0);
+  transition: transform 620ms cubic-bezier(.22, 1, .36, 1), width 420ms cubic-bezier(.22, 1, .36, 1);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.pulse-tab-list[data-active="1"] .pulse-tab-indicator {
+  transform: translateX(calc(100% + var(--pulse-tab-gap)));
+}
+
+.pulse-tab-list[data-active="2"] .pulse-tab-indicator {
+  transform: translateX(calc(200% + var(--pulse-tab-gap) + var(--pulse-tab-gap)));
+}
+
+.pulse-relative-time {
+  display: inline-flex !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit;
+  font: inherit;
 }
 
 .pulse-dashboard {
@@ -486,7 +550,6 @@ textarea:focus-visible {
     padding-block: 12px;
   }
 
-  .pulse-product,
   .pulse-stats {
     display: none;
   }
@@ -531,6 +594,12 @@ textarea:focus-visible {
     align-items: start;
     flex-direction: column;
     padding: 14px 16px 0;
+  }
+
+  .pulse-tab-list {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
   }
 
   .pulse-dashboard {

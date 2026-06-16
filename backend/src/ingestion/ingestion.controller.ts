@@ -47,11 +47,13 @@ export class IngestionController {
         durationMs,
       };
     } catch (error) {
-      this.logger.error(`Manual ingestion run failed: ${error.message}`);
+      const message =
+        error instanceof Error ? error.message : 'Manual ingestion run failed';
+      this.logger.error(`Manual ingestion run failed: ${message}`);
       return {
         status: 'completed',
         articlesProcessed: 0,
-        error: error.message,
+        error: message,
       };
     }
   }
@@ -61,8 +63,22 @@ export class IngestionController {
   @HttpCode(HttpStatus.ACCEPTED)
   fetchAll() {
     // Fire and don't wait — return immediately
-    this.ingestionService.fetchAllSources();
+    void this.ingestionService.fetchAllSources();
     return { message: 'Fetch cycle triggered' };
+  }
+
+  /** Trigger a fetch for the newly expanded source set */
+  @Post('fetch-expanded-sources')
+  @HttpCode(HttpStatus.ACCEPTED)
+  fetchExpandedSources() {
+    return this.ingestionService.fetchExpandedSources();
+  }
+
+  /** Trigger a fetch for a controlled list of source slugs */
+  @Post('fetch-sources')
+  @HttpCode(HttpStatus.ACCEPTED)
+  fetchSources(@Body() body: { slugs?: string[] }) {
+    return this.ingestionService.fetchSources(body.slugs ?? []);
   }
 
   /** Trigger a fetch for a single source by slug */

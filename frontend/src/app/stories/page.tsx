@@ -22,9 +22,10 @@ import { useStats, useStories } from "@/hooks/useStories";
 import type { StoryCluster } from "@/types";
 import {
   categoryLabel,
-  formatPulseTime,
+  PulseIndexedClock,
   PulseFdiBadge,
   PulseFooter,
+  PulseRelativeTime,
   pulseChromeStyles,
   PulseTopbar,
   storyCategoryLabel,
@@ -157,7 +158,7 @@ export default function StoriesPage() {
         <div className={`pulse-results ${refreshingStories ? "is-refreshing" : ""}`}>
           <div className="pulse-section-head">
             <h2>Curated Top Stories</h2>
-            <p>{loadingStories ? "Loading" : refreshingStories ? "Tuning signal" : error ? "Unavailable" : `${visibleStories.length} results`} / Updated {formatPulseTime(lead?.newestArticleAt)} <span /></p>
+            <p>{loadingStories ? "Loading" : refreshingStories ? "Tuning signal" : error ? "Unavailable" : `${visibleStories.length} results`} / Updated <PulseRelativeTime value={lead?.newestArticleAt} /> <span /></p>
           </div>
           {refreshingStories ? <SearchPulse query={query} /> : null}
 
@@ -248,7 +249,7 @@ export default function StoriesPage() {
 
       <section className="pulse-bottom-strip" aria-label="Search status">
         <strong>FRACTURE</strong>
-        <span><Clock3 size={16} /> Indexed {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+        <span><Clock3 size={16} /> <PulseIndexedClock /></span>
         <span><Filter size={16} /> Source-aware search</span>
         <span><Globe2 size={16} /> {stats?.sourcesTracked ?? 0} sources tracked</span>
       </section>
@@ -267,7 +268,7 @@ function StoryResult({ story, index }: { story: StoryCluster; index: number }) {
         {story.status === "BREAKING" || index === 0 ? <span>LIVE</span> : null}
       </div>
       <div className="pulse-result-copy">
-        <p className="pulse-meta"><b>{storyCategoryLabel(story)}</b><span />{formatPulseTime(story.newestArticleAt)}<span />{story.sourceCount} sources</p>
+        <p className="pulse-meta"><b>{storyCategoryLabel(story)}</b><span /><PulseRelativeTime value={story.newestArticleAt} /><span />{story.sourceCount} sources</p>
         <h3>{story.topic}</h3>
         <p>{storySummary(story, index === 0 ? 150 : 112)}</p>
         <div className="pulse-tags">

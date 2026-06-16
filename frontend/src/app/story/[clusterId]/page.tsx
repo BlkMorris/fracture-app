@@ -1,24 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Bookmark, CheckCircle2, Clock3, Headphones, MessageSquare, Send, Share2, Sparkles, XCircle } from "lucide-react";
+import { AlertTriangle, Bookmark, CheckCircle2, Clock3, Headphones, MessageSquare, Send, Share2, Sparkles, X, XCircle } from "lucide-react";
 import { useStats, useStories, useStory } from "@/hooks/useStories";
 import type { Article, HeadlineEntry, StoryCluster, TimelineEntry } from "@/types";
 import {
   categoryLabel,
   compactStoryText,
   formatClock,
-  formatPulseTime,
   PulseFdiBadge,
   PulseFooter,
+  PulseRelativeTime,
   pulseChromeStyles,
   PulseTopbar,
   storyCategoryLabel,
   storyDivergence,
   storySummary,
 } from "@/components/pulse/PulseChrome";
+
+const REVIEW_OPTIONS = [
+  "FDI score seems wrong",
+  "Source framing is incorrect",
+  "Important source is missing",
+  "Summary misses key context",
+  "Headline comparison feels off",
+] as const;
 
 export default function StoryPage({ params }: { params: Promise<{ clusterId: string }> }) {
   const { clusterId } = use(params);
@@ -28,17 +36,25 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [sourceModalArticle, setSourceModalArticle] = useState<Article | null>(null);
   const [feedbackChoice, setFeedbackChoice] = useState<"accurate" | "review" | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewIssues, setReviewIssues] = useState<string[]>([]);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSignals, setReviewSignals] = useState(0);
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState<Array<{ id: string; body: string; time: string }>>([]);
 
   const sortedArticles = useMemo(() => sortArticles(data?.articles ?? []), [data?.articles]);
+  const sourceMapArticles = useMemo(() => uniqueSourceArticles(sortedArticles), [sortedArticles]);
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
-      if (event.key === "Escape") setSourceModalArticle(null);
+      if (event.key === "Escape") {
+        setSourceModalArticle(null);
+        setReviewModalOpen(false);
+      }
     }
 
-    if (sourceModalArticle) {
+    if (sourceModalArticle || reviewModalOpen) {
       const previousOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
       window.addEventListener("keydown", handleKeydown);
@@ -49,7 +65,7 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
     }
 
     return undefined;
-  }, [sourceModalArticle]);
+  }, [sourceModalArticle, reviewModalOpen]);
 
   if (error) return <StoryState title="Story not found" body="We could not find the story you are looking for." />;
   if (isLoading || !data) return <StoryLoading stats={stats} />;
@@ -68,6 +84,25 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
   const context = compactStoryText(contextRaw, 300);
   const hasMoreContext = contextRaw.length > context.length;
   const contextArticle = selectedArticle ?? sortedArticles[0] ?? null;
+  const reviewThreshold = 3;
+  const reviewThresholdMet = reviewSignals >= reviewThreshold;
+
+  function toggleReviewIssue(issue: string) {
+    setReviewIssues((current) =>
+      current.includes(issue) ? current.filter((item) => item !== issue) : [...current, issue],
+    );
+  }
+
+  function submitReviewRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reviewIssues.length && !reviewComment.trim()) return;
+
+    setFeedbackChoice("review");
+    setReviewSignals((current) => current + 1);
+    setReviewModalOpen(false);
+    setReviewIssues([]);
+    setReviewComment("");
+  }
 
   return (
     <main className="pulse-detail" aria-label="Fracture Pulse Editorial story detail">
@@ -92,7 +127,7 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
             </motion.h1>
             <p className="pulse-deck">{summary}</p>
             <div className="pulse-meta">
-              <span><Clock3 size={14} /> Updated {formatPulseTime(cluster.newestArticleAt)}</span>
+              <span><Clock3 size={14} /> Updated <PulseRelativeTime value={cluster.newestArticleAt} /></span>
               <span>{cluster.sourceCount || sortedArticles.length} sources</span>
             </div>
           </header>
@@ -111,42 +146,6 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
             <article><span>Where coverage agrees</span><h2>{agreement}</h2><p>Most coverage is tied to the same underlying event and shared timeline, even as outlets emphasize different consequences.</p></article>
             <article><span>Where framing splits</span><h2>{split}</h2><p>Fracture detects shifts in headline tone, framing type, source emphasis, and the actors each outlet foregrounds.</p></article>
             <article><span>Reader cue</span><h2>Watch the verbs.</h2><p>Headlines can steer readers toward different interpretations through emphasis, urgency, and accountability language.</p></article>
-          </section>
-
-          <section className="pulse-spectrum" aria-label="Source map">
-            <div className="pulse-section-heading">
-              <p className="pulse-label">Source Map</p>
-              <h2>Utility frame to urgency frame</h2>
-            </div>
-            <div className="pulse-track">
-              <span>Utility</span><span>Process</span><span>Urgency</span>
-              {sortedArticles.slice(0, 8).map((article, index) => (
-                <button
-                  type="button"
-                  key={article.id}
-                  className={selectedArticle?.id === article.id ? "active" : ""}
-                  style={{ left: `${spectrumPosition(article, index, sortedArticles.length)}%` }}
-                  data-tooltip={`${article.source?.name || "Source"} • Typically ${sourceLeanLabel(article)}`}
-                  title={`${article.source?.name || "Source"} • Typically ${sourceLeanLabel(article)}`}
-                  onClick={() => {
-                    setSelectedArticleId(article.id);
-                    setSourceModalArticle(article);
-                  }}
-                  aria-label={`Inspect ${article.source?.name || "source"}, typically ${sourceLeanLabel(article)}`}
-                >
-                  {sourceInitials(article.source?.name || "?")}
-                </button>
-              ))}
-            </div>
-            <div className="pulse-source-list">
-              {sortedArticles.slice(0, 5).map((article) => (
-                <button type="button" onClick={() => setSourceModalArticle(article)} key={article.id}>
-                  <span>{article.source?.name || "Source"}</span>
-                  <strong>{compactStoryText(cleanText(article.title), 82)}</strong>
-                  <i>{article.framingType ? categoryLabel(article.framingType) : "Frame pending"}</i>
-                </button>
-              ))}
-            </div>
           </section>
 
           <section className="pulse-copy-block">
@@ -186,18 +185,71 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
             </div>
           </section>
 
+          <section className="pulse-spectrum" aria-label="Source map">
+            <div className="pulse-section-heading">
+              <p className="pulse-label">Source Map</p>
+              <h2>Utility frame to urgency frame</h2>
+            </div>
+            <div className="pulse-track">
+              <span>Utility</span><span>Process</span><span>Urgency</span>
+              {sourceMapArticles.slice(0, 8).map((article, index) => (
+                <button
+                  type="button"
+                  key={sourceKey(article)}
+                  className={selectedArticle?.id === article.id ? "active" : ""}
+                  style={{ left: `${spectrumPosition(article, index, sourceMapArticles.length)}%` }}
+                  data-tooltip={`${article.source?.name || "Source"} • Typically ${sourceLeanLabel(article)}`}
+                  title={`${article.source?.name || "Source"} • Typically ${sourceLeanLabel(article)}`}
+                  onClick={() => {
+                    setSelectedArticleId(article.id);
+                    setSourceModalArticle(article);
+                  }}
+                  aria-label={`Inspect ${article.source?.name || "source"}, typically ${sourceLeanLabel(article)}`}
+                >
+                  {sourceInitials(article.source?.name || "?")}
+                </button>
+              ))}
+            </div>
+            <div className="pulse-source-list">
+              {sourceMapArticles.slice(0, 5).map((article) => (
+                <button type="button" onClick={() => setSourceModalArticle(article)} key={sourceKey(article)}>
+                  <span>{article.source?.name || "Source"}</span>
+                  <strong>{compactStoryText(cleanText(article.title), 82)}</strong>
+                  <i>{article.framingType ? categoryLabel(article.framingType) : "Frame pending"}</i>
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="pulse-feedback" aria-label="Reader accuracy feedback">
             <div className="pulse-section-heading">
               <p className="pulse-label">Reader check</p>
               <h2>Did Fracture analyze this story correctly?</h2>
             </div>
             <div className="pulse-feedback-actions">
-              <button type="button" className={feedbackChoice === "accurate" ? "active" : ""} onClick={() => setFeedbackChoice("accurate")}>
+              <button type="button" className={feedbackChoice === "accurate" ? "active" : ""} onClick={() => {
+                setFeedbackChoice("accurate");
+                setReviewModalOpen(false);
+              }}>
                 <CheckCircle2 size={18} /> Accurate
               </button>
-              <button type="button" className={feedbackChoice === "review" ? "active" : ""} onClick={() => setFeedbackChoice("review")}>
+              <button type="button" className={feedbackChoice === "review" ? "active" : ""} onClick={() => {
+                setFeedbackChoice("review");
+                setReviewModalOpen(true);
+              }}>
                 <XCircle size={18} /> Needs review
               </button>
+            </div>
+            <div className={`pulse-review-status ${reviewThresholdMet ? "is-alert" : ""}`}>
+              <AlertTriangle size={18} />
+              <div>
+                <strong>{reviewThresholdMet ? "Review threshold reached" : "Review threshold watch"}</strong>
+                <p>
+                  {reviewThresholdMet
+                    ? "Readers have flagged this analysis enough times that Fracture should treat this story as under review."
+                    : `${reviewSignals} of ${reviewThreshold} review checks recorded in this session.`}
+                </p>
+              </div>
             </div>
             <p>{feedbackChoice ? "Signal recorded for this session. Persistent feedback can be wired to the backend when the endpoint is ready." : "Mark the read if the framing, source split, and FDI signal match what you see."}</p>
           </section>
@@ -295,6 +347,16 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
       </div>
 
       {sourceModalArticle ? <SourceArticleModal article={sourceModalArticle} onClose={() => setSourceModalArticle(null)} /> : null}
+      {reviewModalOpen ? (
+        <ReviewRequestModal
+          comment={reviewComment}
+          issues={reviewIssues}
+          onClose={() => setReviewModalOpen(false)}
+          onCommentChange={setReviewComment}
+          onSubmit={submitReviewRequest}
+          onToggleIssue={toggleReviewIssue}
+        />
+      ) : null}
 
       <PulseFooter updatedAt={cluster.newestArticleAt} />
 
@@ -314,16 +376,75 @@ function SourceArticleModal({ article, onClose }: { article: Article; onClose: (
         <div className="pulse-source-modal-meta">
           <span>{article.source?.name || "Source"}</span>
           <span>{article.framingType ? categoryLabel(article.framingType) : "Frame pending"}</span>
-          <time>{formatPulseTime(article.publishedAt)}</time>
+          <span><PulseRelativeTime value={article.publishedAt} /></span>
         </div>
         <h2 id="source-modal-title">{cleanText(article.title)}</h2>
         <p>{compactStoryText(cleanText(article.summary) || cleanText(article.title), 320)}</p>
         <dl>
           <div><dt>Outlet</dt><dd>{article.source?.name || "Source"}</dd></div>
-          <div><dt>Published</dt><dd>{article.publishedAt ? `${formatClock(article.publishedAt)} / ${formatPulseTime(article.publishedAt)}` : "Updating"}</dd></div>
+          <div><dt>Published</dt><dd>{article.publishedAt ? <>{formatClock(article.publishedAt)} / <PulseRelativeTime value={article.publishedAt} /></> : "Updating"}</dd></div>
           <div><dt>Source URL</dt><dd>{article.url || "Unavailable"}</dd></div>
         </dl>
       </section>
+    </div>
+  );
+}
+
+function ReviewRequestModal({
+  comment,
+  issues,
+  onClose,
+  onCommentChange,
+  onSubmit,
+  onToggleIssue,
+}: {
+  comment: string;
+  issues: string[];
+  onClose: () => void;
+  onCommentChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onToggleIssue: (issue: string) => void;
+}) {
+  return (
+    <div className="pulse-review-modal" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+      <button className="pulse-review-modal-backdrop" type="button" aria-label="Close review request" onClick={onClose} />
+      <form className="pulse-review-modal-panel" onSubmit={onSubmit}>
+        <div className="pulse-review-modal-head">
+          <p className="pulse-label">Reader review request</p>
+          <button type="button" aria-label="Close review request" onClick={onClose}>
+            <X size={22} />
+          </button>
+        </div>
+        <h2 id="review-modal-title">What should Fracture review?</h2>
+        <p>Flag the parts of this analysis that felt incorrect. This creates a local review signal until the backend feedback queue is connected.</p>
+        <div className="pulse-review-issues" aria-label="Review issue types">
+          {REVIEW_OPTIONS.map((issue) => {
+            const selected = issues.includes(issue);
+            return (
+              <button
+                type="button"
+                className={selected ? "is-selected" : ""}
+                aria-pressed={selected}
+                onClick={() => onToggleIssue(issue)}
+                key={issue}
+              >
+                {selected ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                {issue}
+              </button>
+            );
+          })}
+        </div>
+        <textarea
+          value={comment}
+          onChange={(event) => onCommentChange(event.target.value)}
+          placeholder="Add a short note for the Fracture team."
+          aria-label="Review request comment"
+        />
+        <div className="pulse-review-modal-actions">
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button type="submit" disabled={!issues.length && !comment.trim()}>Submit review</button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -393,6 +514,21 @@ function StoryState({ title, body }: { title: string; body: string }) {
 
 function sortArticles(articles: Article[]) {
   return [...articles].sort((a, b) => (a.politicalLeanScore ?? 0) - (b.politicalLeanScore ?? 0));
+}
+
+function sourceKey(article: Article) {
+  return article.source?.slug || article.source?.name || article.id;
+}
+
+function uniqueSourceArticles(articles: Article[]) {
+  const seen = new Set<string>();
+
+  return articles.filter((article) => {
+    const key = sourceKey(article);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function cleanText(value: string | null | undefined) {
@@ -473,11 +609,12 @@ ${pulseChromeStyles}
 .pulse-spectrum,.pulse-copy-block,.pulse-headlines,.pulse-feedback,.pulse-comments{padding:30px 0;border-bottom:1px solid var(--line)}.pulse-section-heading{display:flex;align-items:end;justify-content:space-between;gap:22px;margin-bottom:24px}.pulse-section-heading.compact{display:block;margin-bottom:14px}.pulse-section-heading.compact h2{font-size:22px}.pulse-track{position:relative;height:138px;margin:26px 4px 32px;border-block:1px solid var(--night);overflow:visible}.pulse-track::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:var(--night);transform:translateY(-50%)}.pulse-track>span{position:absolute;top:12px;color:var(--muted);font-size:12px;font-weight:850}.pulse-track>span:nth-child(1){left:0}.pulse-track>span:nth-child(2){left:50%;transform:translateX(-50%)}.pulse-track>span:nth-child(3){right:0}.pulse-track button{position:absolute;top:50%;width:44px;height:44px;border:2px solid var(--night);background:var(--chalk);color:var(--night);font-weight:950;transform:translate(-50%,-50%);cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease}.pulse-track button::after{content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 12px);z-index:5;width:max-content;max-width:210px;padding:9px 10px;border:1px solid var(--night);background:var(--night);color:var(--chalk);box-shadow:5px 5px 0 var(--orange);font-size:11px;line-height:1.2;font-weight:900;text-transform:none;white-space:normal;opacity:0;pointer-events:none;transform:translate(-50%,6px);transition:opacity 150ms ease,transform 150ms ease}.pulse-track button::before{content:"";position:absolute;left:50%;bottom:calc(100% + 5px);z-index:6;border-left:7px solid transparent;border-right:7px solid transparent;border-top:7px solid var(--night);opacity:0;pointer-events:none;transform:translate(-50%,6px);transition:opacity 150ms ease,transform 150ms ease}.pulse-track button:hover,.pulse-track button.active{background:var(--orange);color:var(--chalk);transform:translate(-50%,-50%) scale(1.08)}.pulse-track button:hover::after,.pulse-track button:focus-visible::after,.pulse-track button:hover::before,.pulse-track button:focus-visible::before{opacity:1;transform:translate(-50%,0)}
 .pulse-source-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-source-list button{min-height:150px;padding:16px;border:0;background:var(--chalk);color:var(--night);text-align:left;cursor:pointer;transition:background 160ms ease,transform 160ms ease}.pulse-source-list button:hover{background:white;transform:translateY(-2px)}.pulse-source-list strong{display:block;margin:8px 0 10px;font-size:15px;line-height:1.2}.pulse-source-list i{color:var(--orange);font-size:12px;font-style:normal;font-weight:850}.pulse-copy-block{display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);gap:30px;align-items:start;background:linear-gradient(90deg,rgba(255,255,255,.64),rgba(255,255,255,.22));padding:34px 28px;border:1px solid var(--line);border-inline:0}.pulse-reading-label{display:grid;gap:12px;align-content:start}.pulse-reading-label span{display:inline-flex;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--soft);padding:8px 10px;color:var(--night);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-reading-body{max-width:800px}.pulse-copy-block h2{margin:0;font-size:44px;max-width:760px}.pulse-copy-block p:last-child{max-width:760px;margin:18px 0 0;color:var(--ink-2);font-size:19px;line-height:1.58}
 .pulse-headline-list{display:grid;gap:8px}.pulse-headline-list button{display:grid;grid-template-columns:150px minmax(0,1fr) 52px;gap:16px;align-items:center;border:1px solid var(--line);background:white;color:var(--night);padding:14px 16px;text-align:left;cursor:pointer;transition:border-color 160ms ease,transform 160ms ease}.pulse-headline-list button:hover,.pulse-headline-list button.active{border-color:var(--night);transform:translateX(2px)}.pulse-headline-list span{color:var(--cyan);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-headline-list strong{font-size:16px;line-height:1.18}.pulse-headline-list small{display:grid;place-items:center;background:var(--night);color:white;width:44px;height:34px;font-weight:950}
-.pulse-feedback{display:grid;gap:16px}.pulse-feedback .pulse-section-heading{margin-bottom:2px}.pulse-feedback-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pulse-feedback-actions button{height:58px;border:1px solid var(--night);background:white;color:var(--night);display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:14px;font-weight:950;text-transform:uppercase;cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease,box-shadow 160ms ease}.pulse-feedback-actions button:hover,.pulse-feedback-actions button.active{background:var(--night);color:white;transform:translateY(-1px);box-shadow:5px 5px 0 var(--orange)}.pulse-feedback>p{max-width:620px;margin:0;color:var(--muted);font-size:14px;line-height:1.42}.pulse-comments form{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:start;gap:12px;border:1px solid var(--night);background:white;padding:14px;box-shadow:7px 7px 0 var(--orange)}.pulse-comments form>svg{margin-top:9px;color:var(--cyan)}.pulse-comments textarea{min-height:88px;resize:vertical;border:0;outline:0;background:transparent;color:var(--night);font:inherit;font-size:15px;font-weight:800;line-height:1.35}.pulse-comments textarea::placeholder{color:rgba(16,17,20,.42)}.pulse-comments form button{height:40px;border:0;background:var(--night);color:white;padding:0 13px;display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-comment-list{display:grid;gap:8px;margin-top:18px}.pulse-comment-list>p,.pulse-comment-list article{margin:0;border:1px solid var(--line);background:rgba(255,255,255,.62);padding:13px}.pulse-comment-list span{display:block;margin-bottom:6px;color:var(--orange);font-size:11px;font-weight:950;text-transform:uppercase}.pulse-comment-list p{margin:0;color:var(--ink-2);font-size:15px;line-height:1.4;font-weight:760}
-.pulse-rail{position:sticky;top:28px;align-self:start;display:grid;gap:14px}.pulse-rail-card{border:1px solid var(--night);background:var(--chalk);padding:16px}.pulse-score{display:grid;gap:14px;background:var(--night);color:var(--chalk);padding:18px}.pulse-score .pulse-label{color:var(--cyan)}.pulse-score .pulse-fdi-badge{width:100%;grid-template-columns:minmax(0,1fr) auto;margin:0;color:var(--night);box-shadow:5px 5px 0 var(--orange)}.pulse-score .pulse-fdi-badge strong{justify-self:end}.pulse-score-count{display:block;border-top:1px solid rgba(252,252,248,.18);border-bottom:1px solid rgba(252,252,248,.18);padding:11px 0;color:rgba(252,252,248,.78);font-size:13px;font-weight:850;line-height:1.3}.pulse-meter{height:9px;background:rgba(252,252,248,.18)}.pulse-meter i{display:block;height:100%;background:var(--orange)}.pulse-timeline{display:grid;border-top:1px solid var(--line)}.pulse-timeline article{position:relative;padding:13px 0 13px 18px;border-bottom:1px solid var(--line)}.pulse-timeline article::before{content:"";position:absolute;left:0;top:18px;width:8px;height:8px;border-radius:999px;background:var(--muted)}.pulse-timeline .tone-orange::before{background:var(--orange)}.pulse-timeline .tone-cyan::before{background:var(--cyan)}.pulse-timeline time{color:var(--muted);font-family:"Geist Mono","IBM Plex Mono",ui-monospace,monospace;font-size:11px}.pulse-timeline strong{display:block;margin:4px 0;color:var(--night);font-size:14px}.pulse-selected-source strong{display:block;margin:8px 0;font-size:22px;letter-spacing:-.03em}.pulse-selected-source p{color:var(--muted);line-height:1.4}.pulse-selected-source button{border:0;background:transparent;color:var(--orange);padding:0;font-size:13px;font-weight:950;cursor:pointer}.pulse-mix{display:grid;gap:8px}.pulse-mix span{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;font-size:13px}.pulse-related{display:grid;gap:1px;background:var(--line)}.pulse-related a{display:grid;gap:5px;background:var(--chalk);padding:12px}.pulse-related strong{color:var(--night);font-size:15px;line-height:1.18}.pulse-related small{color:var(--muted)}
+.pulse-feedback{display:grid;gap:16px}.pulse-feedback .pulse-section-heading{margin-bottom:2px}.pulse-feedback-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pulse-feedback-actions button{height:58px;border:1px solid var(--night);background:white;color:var(--night);display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:14px;font-weight:950;text-transform:uppercase;cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease,box-shadow 160ms ease}.pulse-feedback-actions button:hover,.pulse-feedback-actions button.active{background:var(--night);color:white;transform:translateY(-1px);box-shadow:5px 5px 0 var(--orange)}.pulse-review-status{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--line);background:rgba(255,255,255,.62);padding:13px}.pulse-review-status svg{margin-top:2px;color:var(--cyan)}.pulse-review-status.is-alert{border-color:var(--orange);background:rgba(255,90,31,.09);box-shadow:5px 5px 0 rgba(255,90,31,.18)}.pulse-review-status.is-alert svg{color:var(--orange)}.pulse-review-status strong{display:block;color:var(--night);font-size:15px;font-weight:950;text-transform:uppercase}.pulse-review-status p{margin:4px 0 0!important;color:var(--muted);font-size:14px;line-height:1.35}.pulse-feedback>p{max-width:620px;margin:0;color:var(--muted);font-size:14px;line-height:1.42}.pulse-comments form{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:start;gap:12px;border:1px solid var(--night);background:white;padding:14px;box-shadow:7px 7px 0 var(--orange)}.pulse-comments form>svg{margin-top:9px;color:var(--cyan)}.pulse-comments textarea{min-height:88px;resize:vertical;border:0;outline:0;background:transparent;color:var(--night);font:inherit;font-size:15px;font-weight:800;line-height:1.35}.pulse-comments textarea::placeholder{color:rgba(16,17,20,.42)}.pulse-comments form button{height:40px;border:0;background:var(--night);color:white;padding:0 13px;display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-comment-list{display:grid;gap:8px;margin-top:18px}.pulse-comment-list>p,.pulse-comment-list article{margin:0;border:1px solid var(--line);background:rgba(255,255,255,.62);padding:13px}.pulse-comment-list span{display:block;margin-bottom:6px;color:var(--orange);font-size:11px;font-weight:950;text-transform:uppercase}.pulse-comment-list p{margin:0;color:var(--ink-2);font-size:15px;line-height:1.4;font-weight:760}
+.pulse-rail{position:sticky;top:28px;align-self:start;display:grid;gap:14px}.pulse-rail-card{border:1px solid var(--night);background:var(--chalk);padding:16px}.pulse-score{display:grid;gap:14px;background:var(--night);color:var(--chalk);padding:18px}.pulse-score .pulse-label{color:var(--cyan)}.pulse-score .pulse-fdi-badge{width:100%;grid-template-columns:minmax(0,1fr) auto;margin:0;color:var(--night);box-shadow:5px 5px 0 var(--orange)}.pulse-score .pulse-fdi-badge strong{justify-self:end}.pulse-score-count{display:block;border-top:1px solid rgba(252,252,248,.18);border-bottom:1px solid rgba(252,252,248,.18);padding:11px 0;color:rgba(252,252,248,.78);font-size:13px;font-weight:850;line-height:1.3}.pulse-meter{height:9px;background:rgba(252,252,248,.18)}.pulse-meter i{display:block;height:100%;background:var(--orange)}.pulse-timeline{display:grid;border-top:1px solid var(--line)}.pulse-timeline article{position:relative;padding:14px 0 14px 30px;border-bottom:1px solid var(--line)}.pulse-timeline article::before{content:"";position:absolute;left:10px;top:21px;width:8px;height:8px;border-radius:999px;background:var(--muted)}.pulse-timeline .tone-orange::before{background:var(--orange)}.pulse-timeline .tone-cyan::before{background:var(--cyan)}.pulse-timeline time{color:var(--muted);font-family:"Geist Mono","IBM Plex Mono",ui-monospace,monospace;font-size:11px}.pulse-timeline strong{display:block;margin:4px 0;color:var(--night);font-size:14px}.pulse-selected-source strong{display:block;margin:8px 0;font-size:22px;letter-spacing:-.03em}.pulse-selected-source p{color:var(--muted);line-height:1.4}.pulse-selected-source button{border:0;background:transparent;color:var(--orange);padding:0;font-size:13px;font-weight:950;cursor:pointer}.pulse-mix{display:grid;gap:8px}.pulse-mix span{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;font-size:13px}.pulse-related{display:grid;gap:1px;background:var(--line)}.pulse-related a{display:grid;gap:5px;background:var(--chalk);padding:12px}.pulse-related strong{color:var(--night);font-size:15px;line-height:1.18}.pulse-related small{color:var(--muted)}
 .pulse-source-modal{position:fixed;inset:0;z-index:500;display:grid;place-items:center;padding:24px}.pulse-source-modal-backdrop{position:absolute;inset:0;border:0;background:rgba(16,17,20,.58);cursor:pointer}.pulse-source-modal-panel{position:relative;z-index:1;width:min(760px,100%);max-height:min(82vh,760px);overflow:auto;border:1px solid var(--night);background:var(--chalk);color:var(--night);padding:24px;box-shadow:12px 12px 0 var(--orange)}.pulse-source-modal-head{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding-bottom:14px}.pulse-source-modal-head button{border:1px solid var(--night);background:white;color:var(--night);height:36px;padding:0 12px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-source-modal-meta{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.pulse-source-modal-meta span,.pulse-source-modal-meta time{border:1px solid var(--line);background:white;padding:7px 9px;font-size:12px;font-weight:900}.pulse-source-modal-meta span:first-child{color:var(--cyan);text-transform:uppercase}.pulse-source-modal h2{max-width:680px;margin:0;font-size:clamp(34px,5vw,64px);line-height:.94;font-weight:1000;letter-spacing:-.055em}.pulse-source-modal-panel>p{max-width:620px;margin:18px 0 22px;color:var(--ink-2);font-size:18px;line-height:1.5}.pulse-source-modal dl{display:grid;gap:1px;margin:0;background:var(--line)}.pulse-source-modal dl div{display:grid;grid-template-columns:140px minmax(0,1fr);gap:14px;background:white;padding:13px}.pulse-source-modal dt{color:var(--orange);font-size:11px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}.pulse-source-modal dd{min-width:0;margin:0;color:var(--night);font-size:13px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+.pulse-review-modal{position:fixed;inset:0;z-index:520;display:grid;place-items:center;padding:24px}.pulse-review-modal-backdrop{position:absolute;inset:0;border:0;background:rgba(16,17,20,.58);cursor:pointer}.pulse-review-modal-panel{position:relative;z-index:1;display:grid;gap:16px;width:min(700px,100%);max-height:min(86vh,760px);overflow:auto;border:1px solid var(--night);background:var(--chalk);color:var(--night);padding:24px;box-shadow:12px 12px 0 var(--cyan)}.pulse-review-modal-head{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding-bottom:14px}.pulse-review-modal-head button{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--night);background:white;color:var(--night);cursor:pointer}.pulse-review-modal h2{max-width:620px;margin:0;font-size:clamp(34px,5vw,62px);line-height:.94;font-weight:1000;letter-spacing:-.055em}.pulse-review-modal-panel>p{max-width:590px;margin:0;color:var(--muted);font-size:16px;line-height:1.45;font-weight:800}.pulse-review-issues{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.pulse-review-issues button{min-height:48px;border:1px solid var(--line);background:white;color:var(--night);display:inline-flex;align-items:center;gap:9px;padding:0 11px;text-align:left;font-size:13px;font-weight:950;cursor:pointer;transition:border-color 160ms ease,box-shadow 160ms ease,transform 160ms ease}.pulse-review-issues button:hover,.pulse-review-issues button.is-selected{border-color:var(--night);box-shadow:4px 4px 0 var(--orange);transform:translateY(-1px)}.pulse-review-issues button.is-selected svg{color:var(--cyan)}.pulse-review-modal textarea{min-height:112px;resize:vertical;border:1px solid var(--night);background:white;color:var(--night);padding:13px;font:inherit;font-size:15px;font-weight:800;line-height:1.4;outline:0}.pulse-review-modal textarea:focus{box-shadow:5px 5px 0 var(--orange)}.pulse-review-modal-actions{display:flex;justify-content:flex-end;gap:10px}.pulse-review-modal-actions button{height:42px;border:1px solid var(--night);background:white;color:var(--night);padding:0 14px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-review-modal-actions button:last-child{background:var(--night);color:white}.pulse-review-modal-actions button:disabled{opacity:.45;cursor:not-allowed}
 .pulse-tool-skeleton,.pulse-hero-skeleton span,.pulse-hero-skeleton i,.pulse-summary-skeleton span,.pulse-summary-skeleton i,.pulse-signal-skeleton span,.pulse-signal-skeleton i,.pulse-signal-skeleton b,.pulse-spectrum-skeleton span,.pulse-spectrum-skeleton i,.pulse-spectrum-skeleton b,.pulse-rail-card-skeleton span,.pulse-rail-card-skeleton i,.pulse-rail-card-skeleton b{display:block;background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-tool-skeleton{width:58px;height:58px;border:1px solid var(--line)}.pulse-hero-skeleton{min-height:360px}.pulse-skel-kicker{width:220px;height:13px}.pulse-skel-title{width:min(880px,92%);height:78px;margin-top:24px}.pulse-skel-title.short{width:min(620px,70%);margin-top:12px}.pulse-skel-deck{width:min(720px,76%);height:22px;margin-top:24px}.pulse-skel-deck.narrow{width:min(520px,58%);margin-top:10px}.pulse-skel-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}.pulse-skel-meta i{width:132px;height:34px}.pulse-summary-skeleton span{height:14px;width:92px}.pulse-summary-skeleton i{height:24px;width:86%;margin-bottom:10px}.pulse-summary-skeleton i:last-child{width:62%}.pulse-signal-skeleton span{height:12px;width:46%}.pulse-signal-skeleton i{height:36px;width:88%;margin:18px 0 12px}.pulse-signal-skeleton b{height:58px;width:96%}.pulse-spectrum-skeleton span{height:13px;width:150px}.pulse-spectrum-skeleton i{height:138px;margin:26px 4px 32px}.pulse-spectrum-skeleton div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-spectrum-skeleton b{height:150px;background-color:var(--chalk)}.pulse-rail-card-skeleton{min-height:132px}.pulse-rail-card-skeleton.is-score{min-height:224px;background:var(--night)}.pulse-rail-card-skeleton span{width:60px;height:12px}.pulse-rail-card-skeleton i{width:72%;height:42px;margin:16px 0}.pulse-rail-card-skeleton b{width:100%;height:11px}.pulse-rail-card-skeleton.is-score span,.pulse-rail-card-skeleton.is-score i,.pulse-rail-card-skeleton.is-score b{background:linear-gradient(90deg,rgba(252,252,248,.1),rgba(217,212,204,.48),rgba(252,252,248,.1));background-size:200% 100%}.pulse-state{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:48px 18px}.pulse-state>div{width:min(760px,100%);border:1px solid var(--night);background:white;padding:38px;box-shadow:10px 10px 0 var(--orange)}.pulse-state h1{max-width:660px;margin:10px 0 12px;font-size:clamp(44px,6vw,82px);line-height:.9;font-weight:1000;letter-spacing:-.06em}.pulse-state p:not(.pulse-label){max-width:520px;margin:0;color:var(--muted);font-size:18px;line-height:1.42}.pulse-state nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.pulse-state a{border:1px solid var(--night);padding:11px 13px;font-size:14px;font-weight:950}.pulse-state a:first-child{background:var(--night);color:white}.pulse-state a:last-child{background:var(--chalk);color:var(--night)}@keyframes skeleton{to{background-position:-200% 0}}
 @media(max-width:1100px){.pulse-detail-layout{grid-template-columns:minmax(0,1fr)}.pulse-tools,.pulse-rail{position:static}.pulse-tools{display:flex;order:2}.pulse-story{order:1}.pulse-rail{order:3;grid-template-columns:repeat(2,minmax(0,1fr))}.pulse-rail-card:first-child{grid-column:1/-1}.pulse-source-list,.pulse-spectrum-skeleton div{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.pulse-detail-layout{padding-inline:14px}.pulse-summary,.pulse-copy-block{grid-template-columns:1fr}.pulse-signal-grid,.pulse-source-list,.pulse-rail,.pulse-spectrum-skeleton div,.pulse-feedback-actions{grid-template-columns:1fr}.pulse-signal-grid article,.pulse-signal-grid article+article{padding:22px 0;border-right:0;border-bottom:1px solid var(--line)}.pulse-hero h1{font-size:clamp(42px,13vw,62px);line-height:.96}.pulse-deck{font-size:19px}.pulse-tools{gap:8px}.pulse-tools button,.pulse-tool-skeleton{width:48px;height:48px}.pulse-headline-list button{grid-template-columns:1fr}.pulse-comments form{grid-template-columns:1fr}.pulse-comments form>svg{display:none}.pulse-comments form button{justify-content:center}.pulse-copy-block{padding:26px 20px}.pulse-copy-block h2{font-size:34px}.pulse-section-heading{display:block}.pulse-skel-title{height:50px}.pulse-state h1{font-size:44px}.pulse-state>div{padding:26px;box-shadow:6px 6px 0 var(--orange)}}
-@media(max-width:520px){.pulse-detail{overflow-x:hidden}.pulse-detail-layout{gap:18px;padding:20px 12px 44px}.pulse-hero{padding:24px 0 26px}.pulse-kicker{font-size:11px;line-height:1.3}.pulse-hero h1{font-size:clamp(36px,11vw,54px);letter-spacing:-.045em}.pulse-deck{font-size:18px}.pulse-meta{gap:8px;margin-top:18px}.pulse-meta>span:not(.pulse-fdi-badge){max-width:100%;font-size:12px}.pulse-summary{gap:12px;padding:22px 0}.pulse-context-copy p{font-size:20px}.pulse-signal-grid article,.pulse-signal-grid article+article{min-height:auto;padding:20px 0}.pulse-signal-grid h2,.pulse-section-heading h2{font-size:24px}.pulse-spectrum,.pulse-headlines{padding:24px 0}.pulse-track{height:126px;margin:22px 22px 26px}.pulse-track button{width:38px;height:38px;font-size:12px}.pulse-track>span{font-size:11px}.pulse-source-list button{min-height:auto;padding:14px}.pulse-copy-block{gap:14px;padding:22px 16px}.pulse-reading-label{gap:9px}.pulse-reading-label span{padding:7px 9px;font-size:11px}.pulse-copy-block h2{font-size:30px;line-height:1.04}.pulse-copy-block p:last-child{font-size:17px;margin-top:14px}.pulse-headline-list button{gap:9px;padding:13px}.pulse-headline-list small{width:40px;height:30px}.pulse-tools{overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.pulse-tools::-webkit-scrollbar{display:none}.pulse-tools button,.pulse-tool-skeleton{flex:0 0 46px;width:46px;height:46px}.pulse-rail{gap:12px}.pulse-rail-card{padding:14px}.pulse-score{gap:12px;padding:15px}.pulse-score .pulse-fdi-badge{box-shadow:4px 4px 0 var(--orange)}.pulse-score-count{padding:10px 0}.pulse-selected-source strong{font-size:20px}.pulse-skel-title{width:100%;height:46px}.pulse-skel-title.short{width:72%}.pulse-skel-deck{width:88%}.pulse-skel-meta i{width:112px;height:32px}.pulse-spectrum-skeleton i{height:126px;margin:22px 4px 26px}.pulse-spectrum-skeleton b{height:96px}.pulse-rail-card-skeleton{min-height:116px}.pulse-rail-card-skeleton.is-score{min-height:200px}.pulse-source-modal{padding:12px}.pulse-source-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--orange)}.pulse-source-modal-head{align-items:flex-start}.pulse-source-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-source-modal-panel>p{font-size:16px}.pulse-source-modal dl div{grid-template-columns:1fr;gap:6px}.pulse-state{padding:32px 12px}.pulse-state>div{padding:22px}.pulse-state h1{font-size:clamp(34px,10vw,48px)}.pulse-state nav{display:grid;grid-template-columns:1fr}.pulse-state a{justify-content:center;text-align:center}}
+@media(max-width:520px){.pulse-detail{overflow-x:hidden}.pulse-detail-layout{gap:18px;padding:20px 12px 44px}.pulse-hero{padding:24px 0 26px}.pulse-kicker{font-size:11px;line-height:1.3}.pulse-hero h1{font-size:clamp(36px,11vw,54px);letter-spacing:-.045em}.pulse-deck{font-size:18px}.pulse-meta{gap:8px;margin-top:18px}.pulse-meta>span:not(.pulse-fdi-badge){max-width:100%;font-size:12px}.pulse-summary{gap:12px;padding:22px 0}.pulse-context-copy p{font-size:20px}.pulse-signal-grid article,.pulse-signal-grid article+article{min-height:auto;padding:20px 0}.pulse-signal-grid h2,.pulse-section-heading h2{font-size:24px}.pulse-spectrum,.pulse-headlines{padding:24px 0}.pulse-track{height:126px;margin:22px 22px 26px}.pulse-track button{width:38px;height:38px;font-size:12px}.pulse-track>span{font-size:11px}.pulse-source-list button{min-height:auto;padding:14px}.pulse-copy-block{gap:14px;padding:22px 16px}.pulse-reading-label{gap:9px}.pulse-reading-label span{padding:7px 9px;font-size:11px}.pulse-copy-block h2{font-size:30px;line-height:1.04}.pulse-copy-block p:last-child{font-size:17px;margin-top:14px}.pulse-headline-list button{gap:9px;padding:13px}.pulse-headline-list small{width:40px;height:30px}.pulse-tools{overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.pulse-tools::-webkit-scrollbar{display:none}.pulse-tools button,.pulse-tool-skeleton{flex:0 0 46px;width:46px;height:46px}.pulse-rail{gap:12px}.pulse-rail-card{padding:14px}.pulse-score{gap:12px;padding:15px}.pulse-score .pulse-fdi-badge{box-shadow:4px 4px 0 var(--orange)}.pulse-score-count{padding:10px 0}.pulse-selected-source strong{font-size:20px}.pulse-skel-title{width:100%;height:46px}.pulse-skel-title.short{width:72%}.pulse-skel-deck{width:88%}.pulse-skel-meta i{width:112px;height:32px}.pulse-spectrum-skeleton i{height:126px;margin:22px 4px 26px}.pulse-spectrum-skeleton b{height:96px}.pulse-rail-card-skeleton{min-height:116px}.pulse-rail-card-skeleton.is-score{min-height:200px}.pulse-source-modal,.pulse-review-modal{padding:12px}.pulse-source-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--orange)}.pulse-source-modal-head{align-items:flex-start}.pulse-source-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-source-modal-panel>p{font-size:16px}.pulse-source-modal dl div{grid-template-columns:1fr;gap:6px}.pulse-review-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--cyan)}.pulse-review-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-review-issues{grid-template-columns:1fr}.pulse-review-modal-actions{display:grid;grid-template-columns:1fr}.pulse-state{padding:32px 12px}.pulse-state>div{padding:22px}.pulse-state h1{font-size:clamp(34px,10vw,48px)}.pulse-state nav{display:grid;grid-template-columns:1fr}.pulse-state a{justify-content:center;text-align:center}}
 `;

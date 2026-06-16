@@ -67,9 +67,57 @@ export function formatPulseTime(value: string | null | undefined) {
 }
 
 export function formatClock(value: string | null | undefined) {
-  const date = value ? new Date(value) : new Date();
-  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  return safeDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (!value) return "--:--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  });
+}
+
+export function usePulseHydrated() {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return hydrated;
+}
+
+export function PulseRelativeTime({
+  value,
+  fallback = "Updating",
+}: {
+  value?: string | null;
+  fallback?: string;
+}) {
+  const hydrated = usePulseHydrated();
+  return (
+    <time className="pulse-relative-time" dateTime={value ?? undefined} suppressHydrationWarning>
+      {hydrated ? formatPulseTime(value) : fallback}
+    </time>
+  );
+}
+
+export function PulseIndexedClock() {
+  const hydrated = usePulseHydrated();
+
+  if (!hydrated) return <span suppressHydrationWarning>Indexed --:--</span>;
+
+  return (
+    <span suppressHydrationWarning>
+      Indexed{" "}
+      {new Date().toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "America/New_York",
+      })}
+    </span>
+  );
 }
 
 export function categoryLabel(value: string | null | undefined) {
@@ -142,8 +190,81 @@ export function PulseMark() {
   );
 }
 
+const topbarStatFallback = [
+  { id: "stories", icon: BarChart3, label: "Active stories being tracked", text: "0" },
+  { id: "fdi", icon: MessageSquare, label: "Average Fracture Divergence Index", text: "FDI 0" },
+  { id: "sources", icon: Users, label: "Sources currently tracked", text: "0" },
+  { id: "pulse", icon: Radio, label: "Live update pulse rate", text: "0" },
+] as const;
+
+function PulseTopbarStats({ stats, hydrated }: { stats?: PlatformStats; hydrated: boolean }) {
+  if (!hydrated) {
+    return (
+      <div className="pulse-stats" aria-label="Live stats">
+        {topbarStatFallback.map(({ id, icon: Icon, label, text }) => (
+          <span data-tooltip={label} data-value="0" title={label} aria-label={label} key={id}>
+            <Icon size={18} />
+            {text}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  const activeStories = stats?.activeStories ?? 0;
+  const avgDivergence = Math.round(stats?.avgDivergence ?? 0);
+  const sourcesTracked = stats?.sourcesTracked ?? 0;
+  const pulseRate = Math.max(0, Math.round(activeStories / 3));
+  const topbarStats = [
+    {
+      id: "stories",
+      icon: BarChart3,
+      label: "Active stories being tracked",
+      value: activeStories,
+      text: String(activeStories),
+      aria: `${activeStories} active stories being tracked`,
+    },
+    {
+      id: "fdi",
+      icon: MessageSquare,
+      label: fdiTooltip(avgDivergence),
+      value: avgDivergence,
+      text: `FDI ${avgDivergence}`,
+      aria: `Average ${fdiTooltip(avgDivergence)}`,
+    },
+    {
+      id: "sources",
+      icon: Users,
+      label: "Sources currently tracked",
+      value: sourcesTracked,
+      text: compactNumber(sourcesTracked),
+      aria: `${compactNumber(sourcesTracked)} sources currently tracked`,
+    },
+    {
+      id: "pulse",
+      icon: Radio,
+      label: "Live update pulse rate",
+      value: pulseRate,
+      text: String(pulseRate),
+      aria: `${pulseRate} live update pulse rate`,
+    },
+  ];
+
+  return (
+    <div className="pulse-stats" aria-label="Live stats">
+      {topbarStats.map(({ id, icon: Icon, label, value, text, aria }) => (
+        <span data-tooltip={label} data-value={value} title={label} aria-label={aria} key={id}>
+          <Icon size={18} />
+          {text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
   const router = useRouter();
+  const hydrated = usePulseHydrated();
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -154,10 +275,12 @@ export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
     ["Stories", "/stories"],
     ["Login", "/login"],
     ["Register", "/register"],
-    ["About", "#"],
-    ["Methodology", "#"],
-    ["Sources", "#"],
-    ["Contact", "#"],
+    ["About", "/about"],
+    ["Methodology", "/methodology"],
+    ["Sources", "/sources"],
+    ["Privacy", "/privacy"],
+    ["Terms", "/terms"],
+    ["Contact", "/contact"],
   ] as const;
 
   useEffect(() => {
@@ -200,17 +323,9 @@ export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
           FRACTURE
         </Link>
         <div className="pulse-live-badge"><span /> LIVE NOW</div>
-        <Link className="pulse-product" href="/" onClick={() => setMenuOpen(false)}>
-          Pulse <PulseMark />
-        </Link>
-        <div className="pulse-stats" aria-label="Live stats">
-          <span><BarChart3 size={18} />{stats?.activeStories ?? 0}</span>
-          <span title={fdiTooltip(Math.round(stats?.avgDivergence ?? 0))} aria-label={`Average ${fdiTooltip(Math.round(stats?.avgDivergence ?? 0))}`}><MessageSquare size={18} />FDI {Math.round(stats?.avgDivergence ?? 0)}</span>
-          <span><Users size={18} />{compactNumber(stats?.sourcesTracked ?? 0)}</span>
-          <span><Radio size={18} />{Math.max(0, Math.round((stats?.activeStories ?? 0) / 3))}</span>
-        </div>
+        <PulseTopbarStats stats={stats} hydrated={hydrated} />
         <form className={`pulse-search-action ${searchOpen ? "is-open" : ""}`} onSubmit={submitSearch} role="search">
-          <button type="submit" aria-label={searchOpen ? "Run story search" : "Open story search"}>
+          <button type="submit" aria-label={searchOpen ? "Run story search" : "Open story search"} title={searchOpen ? "Run story search" : "Open story search"} data-tooltip={searchOpen ? "Run story search" : "Open story search"}>
             {searchOpen ? <ChevronRight size={22} /> : <Search size={26} />}
           </button>
           <input
@@ -226,8 +341,8 @@ export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
           />
         </form>
         <div className="pulse-actions" aria-label="Site controls">
-          <Link href="/stories" aria-label="Saved stories"><Bookmark size={24} /></Link>
-          <button type="button" aria-label="Open menu" aria-expanded={menuOpen} aria-controls="pulse-menu" onClick={() => setMenuOpen(true)}>
+          <Link href="/stories" aria-label="Saved stories" title="Saved stories" data-tooltip="Saved stories"><Bookmark size={24} /></Link>
+          <button type="button" aria-label="Open menu" title="Open menu" data-tooltip="Open menu" aria-expanded={menuOpen} aria-controls="pulse-menu" onClick={() => setMenuOpen(true)}>
             <Menu size={28} />
           </button>
         </div>
@@ -262,7 +377,15 @@ export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
 }
 
 export function PulseFooter({ updatedAt }: { updatedAt?: string | null }) {
-  const links = ["About", "Methodology", "Sources", "Privacy", "Terms", "Contact", "Careers"];
+  const links = [
+    ["About", "/about"],
+    ["Methodology", "/methodology"],
+    ["Sources", "/sources"],
+    ["Privacy", "/privacy"],
+    ["Terms", "/terms"],
+    ["Contact", "/contact"],
+    ["Careers", "#"],
+  ] as const;
 
   return (
     <footer className="pulse-site-footer" aria-label="Fracture footer">
@@ -271,12 +394,12 @@ export function PulseFooter({ updatedAt }: { updatedAt?: string | null }) {
         <p>Live editorial intelligence for tracking how stories move, split, and gather momentum across sources.</p>
       </div>
       <nav aria-label="Footer links">
-        {links.map((label) => <a href="#" key={label}>{label}</a>)}
+        {links.map(([label, href]) => href === "#" ? <a href="#" key={label}>{label}</a> : <Link href={href} key={label}>{label}</Link>)}
       </nav>
       <div className="pulse-site-footer-status">
         <span><i /> Pulse live</span>
-        <time>Updated {formatPulseTime(updatedAt)}</time>
-        <p>© {new Date().getFullYear()} Fracture Media Intelligence. All rights reserved.</p>
+        <span>Updated <PulseRelativeTime value={updatedAt} /></span>
+        <p>© 2026 Fracture Media Intelligence. All rights reserved.</p>
       </div>
     </footer>
   );
@@ -292,7 +415,7 @@ export const pulseChromeStyles = `
 .pulse-topbar {
   height: 88px;
   display: grid;
-  grid-template-columns: minmax(250px, 1fr) auto minmax(160px, 0.7fr) minmax(360px, 1fr) auto auto;
+  grid-template-columns: minmax(250px, 1fr) auto minmax(360px, 1fr) auto auto;
   align-items: center;
   gap: 28px;
   padding: 0 24px;
@@ -326,14 +449,6 @@ export const pulseChromeStyles = `
   display: inline-block;
   animation: pulseBlink 1.65s ease-in-out infinite;
 }
-.pulse-product {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 20px;
-  font-weight: 900;
-}
 .pulse-wordmark {
   width: 44px;
   height: 20px;
@@ -352,6 +467,7 @@ export const pulseChromeStyles = `
   gap: clamp(20px, 3vw, 46px);
 }
 .pulse-stats span {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -387,6 +503,10 @@ export const pulseChromeStyles = `
   background: white;
   box-shadow: 6px 6px 0 var(--orange);
 }
+.pulse-search-action:hover,
+.pulse-search-action:focus-within {
+  overflow: visible;
+}
 .pulse-search-action input {
   min-width: 0;
   width: 100%;
@@ -410,6 +530,7 @@ export const pulseChromeStyles = `
 .pulse-actions button,
 .pulse-actions a,
 .pulse-search-action button {
+  position: relative;
   width: 32px;
   height: 32px;
   border: 0;
@@ -424,6 +545,68 @@ export const pulseChromeStyles = `
 .pulse-search-action button:hover {
   color: var(--orange);
   transform: translateY(-1px);
+}
+.pulse-stats span[data-tooltip]::after,
+.pulse-actions button[data-tooltip]::after,
+.pulse-actions a[data-tooltip]::after,
+.pulse-search-action button[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 12px);
+  z-index: 80;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 9px;
+  border: 1px solid var(--night);
+  background: var(--night);
+  color: var(--chalk);
+  box-shadow: 4px 4px 0 var(--orange);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 900;
+  text-transform: none;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.pulse-stats span[data-tooltip]::before,
+.pulse-actions button[data-tooltip]::before,
+.pulse-actions a[data-tooltip]::before,
+.pulse-search-action button[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 5px);
+  z-index: 81;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 7px solid var(--night);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.pulse-stats span[data-tooltip]:hover::after,
+.pulse-stats span[data-tooltip]:focus-visible::after,
+.pulse-actions button[data-tooltip]:hover::after,
+.pulse-actions button[data-tooltip]:focus-visible::after,
+.pulse-actions a[data-tooltip]:hover::after,
+.pulse-actions a[data-tooltip]:focus-visible::after,
+.pulse-search-action button[data-tooltip]:hover::after,
+.pulse-search-action button[data-tooltip]:focus-visible::after,
+.pulse-stats span[data-tooltip]:hover::before,
+.pulse-stats span[data-tooltip]:focus-visible::before,
+.pulse-actions button[data-tooltip]:hover::before,
+.pulse-actions button[data-tooltip]:focus-visible::before,
+.pulse-actions a[data-tooltip]:hover::before,
+.pulse-actions a[data-tooltip]:focus-visible::before,
+.pulse-search-action button[data-tooltip]:hover::before,
+.pulse-search-action button[data-tooltip]:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 .pulse-menu-layer {
   position: fixed;
@@ -559,36 +742,49 @@ export const pulseChromeStyles = `
   gap: 24px;
   padding: 0 24px;
 }
-.pulse-tabs div {
-  display: flex;
+.pulse-tab-list {
+  --pulse-tab-gap: clamp(28px, 4vw, 56px);
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(104px, max-content));
   align-items: flex-end;
-  gap: clamp(28px, 4vw, 56px);
+  gap: var(--pulse-tab-gap);
 }
 .pulse-tabs a {
   position: relative;
+  text-align: center;
   padding: 0 0 13px;
   font-size: 18px;
   font-weight: 900;
-  transition: color 160ms ease, transform 160ms ease;
+  color: rgba(16, 17, 20, 0.72);
+  transition: color 280ms cubic-bezier(.22,1,.36,1), transform 280ms cubic-bezier(.22,1,.36,1);
+}
+.pulse-tabs a.is-active {
+  color: var(--night);
+  transform: translateY(-1px);
 }
 .pulse-tabs a:hover {
   color: var(--orange);
   transform: translateY(-1px);
 }
-.pulse-tabs a::after {
+.pulse-tab-indicator {
   content: "";
   position: absolute;
   left: 0;
-  right: 0;
   bottom: 0;
+  width: calc((100% - var(--pulse-tab-gap) - var(--pulse-tab-gap)) / 3);
   height: 2px;
   background: var(--orange);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 240ms cubic-bezier(.16,1,.3,1);
+  transform: translateX(0);
+  transition: transform 620ms cubic-bezier(.22,1,.36,1), width 420ms cubic-bezier(.22,1,.36,1);
+  pointer-events: none;
+  will-change: transform;
 }
-.pulse-tabs a.is-active::after {
-  transform: scaleX(1);
+.pulse-tab-list[data-active="1"] .pulse-tab-indicator {
+  transform: translateX(calc(100% + var(--pulse-tab-gap)));
+}
+.pulse-tab-list[data-active="2"] .pulse-tab-indicator {
+  transform: translateX(calc(200% + var(--pulse-tab-gap) + var(--pulse-tab-gap)));
 }
 .pulse-tabs p {
   display: inline-flex;
@@ -603,6 +799,17 @@ export const pulseChromeStyles = `
   height: 8px;
   border-radius: 999px;
   background: var(--cyan);
+}
+.pulse-relative-time {
+  display: inline-flex !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit;
+  font: inherit;
 }
 .pulse-fdi-badge {
   display: inline-grid;
@@ -738,7 +945,6 @@ export const pulseChromeStyles = `
     row-gap: 12px;
     padding-block: 12px;
   }
-  .pulse-product,
   .pulse-stats {
     display: none;
   }
@@ -788,9 +994,9 @@ export const pulseChromeStyles = `
     flex-direction: column;
     padding: 14px 16px 0;
   }
-  .pulse-tabs div {
+  .pulse-tab-list {
     width: 100%;
-    justify-content: space-between;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 18px;
   }
   .pulse-tabs a {
@@ -805,13 +1011,13 @@ export const pulseChromeStyles = `
     gap: 10px;
     padding: 12px 12px 0;
   }
-  .pulse-tabs div {
-    justify-content: flex-start;
+  .pulse-tab-list {
     overflow-x: auto;
     padding-bottom: 1px;
     scrollbar-width: none;
+    --pulse-tab-gap: 18px;
   }
-  .pulse-tabs div::-webkit-scrollbar {
+  .pulse-tab-list::-webkit-scrollbar {
     display: none;
   }
   .pulse-tabs a {

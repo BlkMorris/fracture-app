@@ -12,9 +12,9 @@ import {
   categoryLabel,
   compactStoryText,
   formatClock,
-  formatPulseTime,
   PulseFdiBadge,
   PulseFooter,
+  PulseRelativeTime,
   pulseChromeStyles,
   PulseTopbar,
   storyDivergence,
@@ -24,10 +24,10 @@ import {
 const topicIcons = [Globe2, BarChart3, Code2, Landmark];
 
 export default function HomePage() {
-  const { data: homepage, isFetching: homepageFetching, isLoading: homepageLoading } = useHomepage();
-  const { data: storiesData, isFetching: storiesFetching, isLoading: storiesLoading } = useStories({ limit: 40 });
+  const { data: homepage, isLoading: homepageLoading } = useHomepage();
+  const { data: storiesData, isLoading: storiesLoading } = useStories({ limit: 40 });
   const { data: stats } = useStats();
-  const contentReady = !homepageLoading && !storiesLoading && !homepageFetching && !storiesFetching;
+  const contentReady = !homepageLoading && !storiesLoading && !!homepage && !!storiesData;
 
   const allStories = contentReady ? storiesData?.stories ?? [] : [];
   const hero = contentReady ? homepage?.hero ?? allStories[0] ?? null : null;
@@ -62,7 +62,7 @@ export default function HomePage() {
           <aside className="pulse-updates" aria-label="Live updates">
             <div className="pulse-section-head">
               <h2><span /> Live Updates</h2>
-              <Link href="/stories">See all</Link>
+              <Link href="/live">See all</Link>
             </div>
             <div className="pulse-update-list">
               {liveItems.map((item, index) => (
@@ -76,7 +76,7 @@ export default function HomePage() {
                 </Link>
               ))}
             </div>
-            <Link href="/stories" className="pulse-live-blog">
+            <Link href="/live" className="pulse-live-blog">
               <span><i /> Live Blog</span>
               <strong>{stats?.activeStories ?? storyPool.length}</strong>
               <ChevronRight size={20} />
@@ -204,7 +204,7 @@ export default function HomePage() {
 
 function LeadStory({ story, article, generatedHeadline }: { story: StoryCluster; article: LatestArticle | null; generatedHeadline: string | null }) {
   const label = homepageCategoryLabel(story);
-  const displayHeadline = compactStoryText(bestHeroHeadline(story, article, generatedHeadline), 150);
+  const displayHeadline = compactStoryText(bestHeroHeadline(story, article, generatedHeadline), 128);
   const deck = heroDeckSnippet(article?.summary || story.summary || `Latest coverage from ${article?.source.name || "tracked sources"} as this story develops.`);
 
   return (
@@ -214,7 +214,7 @@ function LeadStory({ story, article, generatedHeadline }: { story: StoryCluster;
         <motion.h1 initial={{ y: 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.42 }}>
           {displayHeadline}
         </motion.h1>
-        <p className="pulse-meta"><b>{label}</b><span />{formatPulseTime(story.newestArticleAt)}</p>
+        <p className="pulse-meta"><b>{label}</b><span /><PulseRelativeTime value={story.newestArticleAt} /></p>
         <p className="pulse-deck"><span>{deck}</span><em>Read more</em></p>
         <div className="pulse-watch">
           <i><Play size={18} fill="currentColor" /></i>
@@ -242,7 +242,7 @@ function StoryTile({ story, article }: { story: StoryCluster; article: LatestArt
     <Link href={`/story/${story.id}`} className="pulse-story-card">
       <img src={storyImage(story)} alt="" />
       <div>
-        <p><b>{label}</b><span />{article?.source.name || formatPulseTime(timestamp)}</p>
+        <p><b>{label}</b><span />{article?.source.name || <PulseRelativeTime value={timestamp} />}</p>
         <h2>{headline}</h2>
       </div>
       <PulseFdiBadge score={storyDivergence(story)} compact />
@@ -251,13 +251,41 @@ function StoryTile({ story, article }: { story: StoryCluster; article: LatestArt
 }
 
 function bestHeroHeadline(story: StoryCluster, article: LatestArticle | null, generatedHeadline: string | null) {
-  if (article?.title) return article.title;
-  if (generatedHeadline && !isGeneratedFractureCopy(generatedHeadline)) return generatedHeadline;
-  return story.topic;
+  const candidates = [article?.title, generatedHeadline, story.topic]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map(editorializeHeadline)
+    .filter((value) => value && !isGeneratedFractureCopy(value) && !isSummaryLikeHeadline(value));
+
+  return candidates[0] || editorializeHeadline(story.topic) || "Live story movement across sources";
 }
 
 function isGeneratedFractureCopy(value: string) {
   return /^fracture\s+(is\s+)?(tracking|watching|monitoring|comparing|covering)\b/i.test(value.trim());
+}
+
+function isSummaryLikeHeadline(value: string) {
+  const clean = value.trim();
+  const wordCount = clean.split(/\s+/).length;
+  const sentenceCount = (clean.match(/[.!?](?=\s|$)/g) ?? []).length;
+
+  return wordCount > 18 || sentenceCount > 1 || /\b(this story|coverage|sources are|story develops)\b/i.test(clean);
+}
+
+function editorializeHeadline(value: string | null | undefined) {
+  const clean = value?.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim() || "";
+  if (!clean) return "";
+
+  const withoutFractureLead = clean
+    .replace(/^fracture\s+(is\s+)?(tracking|watching|monitoring|comparing|covering)\s+(how|whether|why|the)?\s*/i, "")
+    .replace(/^latest coverage\s+(shows|from|on)\s+/i, "");
+  const firstSentence = withoutFractureLead.split(/(?<=[.!?])\s+/)[0] ?? withoutFractureLead;
+  const headline = firstSentence
+    .replace(/\s+(as|while|because)\s+this story develops\.?$/i, "")
+    .replace(/[.!?]+$/g, "")
+    .trim();
+
+  if (!headline) return "";
+  return headline.charAt(0).toUpperCase() + headline.slice(1);
 }
 
 function heroDeckSnippet(value: string | null | undefined) {
@@ -361,7 +389,7 @@ function buildStoryPool(trending: StoryCluster[], fractured: StoryCluster | null
   return Array.from(new Map(pool.map((story) => [story.id, story])).values()).slice(0, 24);
 }
 
-function buildLiveItems(latest: LatestArticle[], stories: StoryCluster[], hero: StoryCluster | null) {
+function buildLiveItems(latest: LatestArticle[], stories: StoryCluster[], hero: StoryCluster | null, limit = 5) {
   const articleItems = latest.map((article) => ({
     label: article.source.name,
     title: article.title,
@@ -374,11 +402,11 @@ function buildLiveItems(latest: LatestArticle[], stories: StoryCluster[], hero: 
     time: formatClock(story!.newestArticleAt),
     href: `/story/${story!.id}`,
   }));
-  return [...articleItems, ...storyItems].slice(0, 5);
+  return [...articleItems, ...storyItems].slice(0, limit);
 }
 
 function buildTimeline(latest: LatestArticle[], stories: StoryCluster[], hero: StoryCluster | null) {
-  return buildLiveItems(latest, stories, hero).slice(0, 6);
+  return buildLiveItems(latest, stories, hero, 14);
 }
 
 function buildTopics(stories: StoryCluster[]) {
@@ -432,11 +460,12 @@ ${pulseChromeStyles}
 .pulse-lead-image{position:relative;height:364px;background:#171717;overflow:hidden}.pulse-lead-image img,.pulse-story-card img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.9) contrast(1.08);transition:transform 260ms ease}.pulse-lead:hover img,.pulse-story-card:hover img{transform:scale(1.035)}.pulse-lead-image::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(16,17,20,.35),transparent 35%,rgba(16,17,20,.22));pointer-events:none}.pulse-lead-image .pulse-fdi-badge{position:absolute;left:18px;bottom:18px;z-index:1;box-shadow:5px 5px 0 var(--orange)}.pulse-city{position:absolute;top:21px;right:130px;z-index:1;color:white;font-size:22px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}.pulse-image-live{position:absolute;top:18px;right:22px;z-index:1}.pulse-image-live i{width:10px;height:10px;border-radius:999px;background:currentColor;animation:pulseBlink 1.65s ease-in-out infinite}
 .pulse-story-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin-top:12px}.pulse-story-card{position:relative;height:202px;border:1px solid var(--line);background:white;display:grid;grid-template-rows:90px 112px;overflow:hidden}.pulse-story-card>img{height:90px;min-height:90px}.pulse-story-card div{min-height:112px;padding:13px 10px 15px;background:white;min-width:0;z-index:1}.pulse-story-card p{color:var(--night);gap:8px;font-size:12px}.pulse-story-card h2{margin:8px 0 0;color:var(--night);font-size:18px;line-height:1.08;font-weight:950;letter-spacing:-.03em;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.pulse-story-card>.pulse-fdi-badge{position:absolute;right:8px;top:8px;z-index:2;box-shadow:4px 4px 0 rgba(255,90,31,.9)}
 .pulse-updates,.pulse-topics,.pulse-global{border:1px solid var(--line);background:rgba(255,255,255,.48)}.pulse-updates{padding:16px 14px 14px}.pulse-section-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:14px}.pulse-section-head h2{display:inline-flex;align-items:center;gap:12px;margin:0;font-size:16px;line-height:1;font-weight:950;text-transform:uppercase}.pulse-section-head h2 span{width:10px;height:10px;border:2px solid var(--orange);border-radius:999px}.pulse-section-head a{color:var(--orange);font-size:14px;font-weight:800}.pulse-update-list{position:relative;padding:0 0 0 9px}.pulse-update-list::before{content:"";position:absolute;top:18px;bottom:18px;left:11px;width:1px;background:var(--line)}.pulse-update{position:relative;display:grid;grid-template-columns:72px 1fr 18px;gap:10px;min-height:76px;padding:1px 0 14px 20px;transition:transform 160ms ease}.pulse-update:hover{transform:translateX(3px)}.pulse-update::before{content:"";position:absolute;left:-3px;top:7px;width:10px;height:10px;border-radius:999px;background:var(--orange);z-index:1}.pulse-update.is-cyan::before{background:var(--cyan)}.pulse-update time,.pulse-city-row time,.pulse-time-node time{font-family:"Geist Mono","IBM Plex Mono",ui-monospace,SFMono-Regular,monospace}.pulse-update p{margin:4px 0 0;font-size:15px;line-height:1.14}.pulse-update>span{border:1px solid rgba(16,17,20,.3);height:18px}.pulse-live-blog{height:45px;margin-top:7px;padding:0 10px 0 14px;border:1px solid var(--line);display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;font-size:16px}.pulse-live-blog span{display:inline-flex;align-items:center;gap:9px}.pulse-live-blog i{width:10px;height:10px;border-radius:999px;background:var(--orange)}
-.pulse-timeline{margin:0 20px 18px;min-height:72px;border:1px solid var(--line);display:grid;grid-template-columns:92px 1fr;background:rgba(255,255,255,.36)}.pulse-timeline-label{position:relative;display:grid;place-items:center;background:var(--orange);color:white;font-size:16px;line-height:1.04;font-weight:950}.pulse-timeline-label::after{content:"";position:absolute;right:-14px;top:50%;transform:translateY(-50%);border-top:14px solid transparent;border-bottom:14px solid transparent;border-left:14px solid var(--orange)}.pulse-timeline-track{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));align-items:stretch;padding-left:44px}.pulse-time-node{position:relative;padding:11px 12px 8px;border-left:1px solid var(--line);font-size:13px}.pulse-time-node span{position:absolute;top:-5px;left:-5px;width:10px;height:10px;border-radius:999px;background:var(--cyan)}.pulse-time-node.is-orange span{background:var(--orange)}.pulse-time-node time{font-weight:800}.pulse-time-node p{margin:4px 0 0;max-width:142px;line-height:1.18}
+.pulse-timeline{margin:0 20px 18px;min-height:72px;border:1px solid var(--line);display:grid;grid-template-columns:92px minmax(0,1fr);background:rgba(255,255,255,.36);overflow:hidden}.pulse-timeline-label{position:relative;z-index:2;display:grid;place-items:center;background:var(--orange);color:white;font-size:16px;line-height:1.04;font-weight:950}.pulse-timeline-label::after{content:"";position:absolute;right:-14px;top:50%;transform:translateY(-50%);border-top:14px solid transparent;border-bottom:14px solid transparent;border-left:14px solid var(--orange)}.pulse-timeline-track{display:flex;align-items:stretch;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-left:44px;scrollbar-width:thin;scrollbar-color:var(--orange) rgba(16,17,20,.08)}.pulse-timeline-track::-webkit-scrollbar{height:8px}.pulse-timeline-track::-webkit-scrollbar-track{background:rgba(16,17,20,.08)}.pulse-timeline-track::-webkit-scrollbar-thumb{background:var(--orange)}.pulse-time-node{position:relative;flex:0 0 184px;scroll-snap-align:start;padding:11px 12px 8px;border-left:1px solid var(--line);font-size:13px}.pulse-time-node span{position:absolute;top:-5px;left:-5px;width:10px;height:10px;border-radius:999px;background:var(--cyan)}.pulse-time-node.is-orange span{background:var(--orange)}.pulse-time-node time{font-weight:800}.pulse-time-node p{margin:4px 0 0;max-width:142px;line-height:1.18}
 .pulse-context-divider{min-height:54px;margin:0 20px 14px;border-top:3px solid var(--night);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:18px;background:linear-gradient(90deg,rgba(255,90,31,.08),rgba(255,255,255,.22));padding:0 12px}.pulse-context-divider span{display:inline-flex;align-items:center;gap:9px;color:var(--night);font-size:18px;font-weight:1000;letter-spacing:-.035em;text-transform:uppercase}.pulse-context-divider span::before{content:"";width:10px;height:10px;border:2px solid var(--orange);border-radius:999px}.pulse-context-divider p{margin:0;color:var(--muted);font-size:13px;font-weight:850;text-transform:uppercase}.pulse-context-divider.is-secondary{margin-top:4px;background:linear-gradient(90deg,rgba(20,184,200,.08),rgba(255,255,255,.22))}.pulse-context-divider.is-secondary span::before{border-color:var(--cyan)}
 .pulse-lower{display:grid;grid-template-columns:minmax(0,1fr) 38.6%;gap:18px;padding:0 20px 12px}.pulse-topics,.pulse-global{padding:15px 12px 10px}.pulse-topic-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.pulse-topic{min-height:103px;border:1px solid var(--line);background:white;padding:18px;display:grid;grid-template-columns:54px 1fr auto;align-items:center;gap:14px;transition:border-color 160ms ease,transform 160ms ease}.pulse-topic:hover{border-color:var(--night);transform:translateY(-2px)}.pulse-topic.is-cyan svg{color:var(--cyan)}.pulse-topic.is-orange svg{color:var(--orange)}.pulse-topic strong,.pulse-topic small{display:block}.pulse-topic strong{font-size:18px;font-weight:950}.pulse-topic small{margin-top:4px;color:var(--night);font-size:14px}.pulse-global-body{display:grid;grid-template-columns:250px minmax(0,1fr);gap:18px;align-items:center}.pulse-city-list{display:grid;gap:7px}.pulse-city-row{display:grid;grid-template-columns:1fr auto 46px;align-items:center;gap:12px;font-size:14px}.pulse-city-row span{font-weight:800}.pulse-city-row b{border-radius:999px;padding:3px 7px;color:white;font-size:9px;line-height:1;font-weight:950}.pulse-city-row b.is-orange{background:var(--orange)}.pulse-city-row b.is-cyan{background:var(--cyan)}.pulse-map{position:relative;height:105px;opacity:.86;background-image:radial-gradient(circle,rgba(16,17,20,.3) 1.15px,transparent 1.3px);background-size:7px 7px;clip-path:polygon(2% 41%,15% 25%,32% 29%,44% 18%,54% 34%,68% 25%,86% 33%,98% 48%,88% 70%,68% 62%,56% 77%,40% 67%,28% 79%,14% 65%)}.pulse-map i{position:absolute;width:8px;height:8px;border-radius:999px;background:var(--orange)}.pin-one{left:33%;top:47%}.pin-two{left:54%;top:28%}.pin-three{left:69%;top:43%;background:var(--cyan)!important}.pin-four{left:84%;top:37%;background:var(--cyan)!important}
 .pulse-expanded{display:grid;grid-template-columns:minmax(0,1fr) 38.6%;gap:18px;padding:0 20px 20px}.pulse-divergence,.pulse-source-wire{border:1px solid var(--line);background:rgba(255,255,255,.48);padding:15px 12px}.pulse-divergence-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pulse-divergence-card{min-height:170px;border:1px solid var(--line);background:white;padding:14px;display:grid;grid-template-rows:auto 1fr auto;gap:12px;position:relative;transition:border-color 160ms ease,transform 160ms ease}.pulse-divergence-card:hover{border-color:var(--night);transform:translateY(-2px)}.pulse-divergence-card>span{color:var(--orange);font-family:"Geist Mono","IBM Plex Mono",ui-monospace,monospace;font-size:12px;font-weight:950}.pulse-divergence-card p{display:flex;align-items:center;gap:8px;margin:0;color:var(--night);font-size:12px;font-weight:850}.pulse-divergence-card p b{color:var(--cyan);font-size:11px;font-weight:950;text-transform:uppercase}.pulse-divergence-card p i{width:3px;height:3px;border-radius:999px;background:currentColor}.pulse-divergence-card h3{margin:9px 0 0;color:var(--night);font-size:20px;line-height:1.02;font-weight:1000;letter-spacing:-.04em}.pulse-divergence-card .pulse-fdi-badge{justify-self:start}.pulse-wire-list{display:grid;gap:1px;background:var(--line)}.pulse-wire-item{min-height:58px;background:white;display:grid;grid-template-columns:54px 84px minmax(0,1fr) 22px;align-items:center;gap:10px;padding:10px 11px;transition:background 160ms ease,transform 160ms ease}.pulse-wire-item:hover{background:var(--chalk);transform:translateX(2px)}.pulse-wire-item time{font-family:"Geist Mono","IBM Plex Mono",ui-monospace,monospace;font-size:11px;font-weight:850}.pulse-wire-item strong{color:var(--cyan);font-size:11px;font-weight:950;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-wire-item p{margin:0;color:var(--night);font-size:14px;line-height:1.18;font-weight:850}.pulse-wire-item svg{color:var(--orange)}.pulse-skeleton-lead,.pulse-card-skeleton,.pulse-update-skeleton,.pulse-live-blog-skeleton,.pulse-time-skeleton,.pulse-topic-skeleton,.pulse-global-skeleton,.pulse-divergence-skeleton,.pulse-wire-skeleton,.pulse-divider-skeleton span,.pulse-divider-skeleton p,.pulse-skel-line,.pulse-skel-chip,.pulse-skel-actions{background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-skeleton-lead{min-height:364px;display:grid;grid-template-columns:47% 53%;background:var(--night);overflow:hidden}.pulse-skel-copy{padding:24px;display:flex;flex-direction:column;justify-content:center;gap:14px}.pulse-skel-media{background:linear-gradient(90deg,rgba(252,252,248,.1),rgba(217,212,204,.52),rgba(252,252,248,.08));background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-skel-chip{width:52px;height:29px}.pulse-skel-line{display:block;width:78%;height:18px}.pulse-skel-line.is-xl{height:52px;width:92%}.pulse-skel-line.short{width:74%}.pulse-skel-line.narrow{width:58%}.pulse-skel-actions{width:172px;height:36px;margin-top:8px}.pulse-card-skeleton{min-height:202px;border:1px solid var(--line);background:white;display:grid;grid-template-rows:90px 1fr;padding:0}.pulse-card-skeleton span{display:block;background:linear-gradient(90deg,#f8f8f4,var(--warm),#f8f8f4);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-card-skeleton i,.pulse-card-skeleton b{display:block;margin:13px 10px 0;height:10px;background:var(--warm);opacity:.9}.pulse-card-skeleton b{width:76%;height:18px}.pulse-card-skeleton i{width:44%}.pulse-rail-skeleton .pulse-section-head{margin-bottom:18px}.pulse-update-skeleton{height:62px;margin:0 0 14px 20px;border-left:1px solid var(--line)}.pulse-live-blog-skeleton{border-color:var(--line);background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%}.pulse-timeline-skeleton .pulse-timeline-track{grid-template-columns:repeat(5,minmax(120px,1fr))}.pulse-time-skeleton{min-height:72px;border-left:1px solid var(--line);background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-topic-skeleton{min-height:103px;border:1px solid var(--line);background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-global-skeleton{height:105px;border:1px solid var(--line);background-image:radial-gradient(circle,rgba(16,17,20,.18) 1.15px,transparent 1.3px),linear-gradient(90deg,#fff,var(--warm),#fff);background-size:7px 7px,200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-divergence-skeleton{min-height:170px;border:1px solid var(--line)}.pulse-wire-skeleton{height:58px;background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-divider-skeleton span{width:150px;height:18px}.pulse-divider-skeleton p{width:230px;height:13px}.pulse-empty{min-height:364px;border:1px solid var(--night);background:white;display:grid;place-content:center;justify-items:start;padding:34px}.pulse-empty span{color:var(--orange);font-size:12px;font-weight:950;letter-spacing:.12em}.pulse-empty h1{max-width:640px;margin:10px 0 8px;font-size:clamp(42px,5vw,70px);line-height:.92;font-weight:1000;letter-spacing:-.055em}.pulse-empty p{max-width:480px;margin:0 0 22px;color:var(--muted);font-size:18px}.pulse-empty a{border:1px solid var(--night);background:var(--night);color:white;padding:12px 14px;font-weight:950}@keyframes skeleton{to{background-position:-200% 0}}
 @media(max-width:1180px){.pulse-dashboard,.pulse-lower,.pulse-expanded{grid-template-columns:1fr}.pulse-tabs p{margin-right:0}.pulse-topic-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:780px){.pulse-tabs{align-items:start;flex-direction:column;padding:14px 16px 0}.pulse-tabs div{width:100%;justify-content:space-between;gap:18px}.pulse-tabs a{font-size:16px}.pulse-dashboard{padding:10px 16px 16px}.pulse-lead,.pulse-skeleton-lead{height:auto;grid-template-columns:1fr}.pulse-lead-copy{height:auto;min-height:352px;order:2}.pulse-lead-image{order:1}.pulse-skel-copy{min-height:300px;order:2}.pulse-skel-media{order:1}.pulse-lead h1{font-size:clamp(42px,12vw,58px);line-height:1}.pulse-lead-image,.pulse-skel-media{height:245px;min-height:245px}.pulse-city{right:auto;left:18px}.pulse-story-grid,.pulse-topic-grid,.pulse-global-body,.pulse-divergence-grid{grid-template-columns:1fr}.pulse-wire-item{grid-template-columns:50px minmax(0,1fr) 20px}.pulse-wire-item strong{display:none}.pulse-timeline{margin-inline:16px;grid-template-columns:1fr}.pulse-timeline-label{min-height:48px}.pulse-timeline-label::after{display:none}.pulse-timeline-track,.pulse-timeline-skeleton .pulse-timeline-track{grid-template-columns:1fr;padding-left:20px}.pulse-time-node,.pulse-time-skeleton{min-height:66px}.pulse-lower,.pulse-expanded{padding-inline:16px}}
-@media(max-width:520px){.pulse-home{overflow-x:hidden}.pulse-tabs{gap:10px;padding:12px 12px 0}.pulse-tabs div{overflow-x:auto;justify-content:flex-start;padding-bottom:1px;scrollbar-width:none}.pulse-tabs div::-webkit-scrollbar{display:none}.pulse-tabs a{flex:0 0 auto;font-size:15px}.pulse-tabs p{font-size:13px;white-space:normal}.pulse-dashboard{padding:10px 12px 14px;gap:14px}.pulse-lead-copy{min-height:0;padding:12px 18px 18px;justify-content:flex-start}.pulse-skel-copy{min-height:218px}.pulse-chip,.pulse-image-live{font-size:13px;padding:8px 9px}.pulse-lead h1{margin:10px 0 15px;font-size:clamp(36px,11vw,48px);line-height:.98;-webkit-line-clamp:4}.pulse-meta{font-size:13px}.pulse-deck{margin-top:12px;font-size:17px;line-height:1.32;-webkit-line-clamp:3}.pulse-watch{flex-wrap:wrap;gap:10px;margin-top:16px}.pulse-lead-image,.pulse-skel-media{height:230px;min-height:230px}.pulse-city{top:16px;left:16px;max-width:calc(100% - 122px);font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-image-live{right:14px;top:14px}.pulse-lead-image .pulse-fdi-badge{left:14px;bottom:14px}.pulse-story-grid{gap:12px}.pulse-story-card{height:218px;grid-template-rows:96px 122px}.pulse-story-card>img{height:96px;min-height:96px}.pulse-story-card div{min-height:122px;padding:12px 10px 14px}.pulse-story-card h2{font-size:17px;-webkit-line-clamp:4}.pulse-story-card>.pulse-fdi-badge{right:7px;top:7px}.pulse-update{grid-template-columns:62px minmax(0,1fr);padding-right:0}.pulse-update>span{display:none}.pulse-update p{font-size:14px}.pulse-live-blog{grid-template-columns:1fr auto auto}.pulse-timeline{margin-inline:12px}.pulse-timeline-track,.pulse-timeline-skeleton .pulse-timeline-track{padding-left:12px}.pulse-lower,.pulse-expanded{gap:14px;padding-inline:12px}.pulse-topics,.pulse-global,.pulse-divergence,.pulse-source-wire{padding:13px 10px}.pulse-topic{min-height:94px;grid-template-columns:44px minmax(0,1fr) auto;padding:14px;gap:10px}.pulse-topic svg{width:36px;height:36px}.pulse-global-body{gap:12px}.pulse-city-row{grid-template-columns:minmax(0,1fr) auto 42px;gap:8px}.pulse-city-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-map{height:92px}.pulse-divergence-card{min-height:150px}.pulse-divergence-card h3{font-size:19px}.pulse-wire-item{min-height:64px}}
+@media(max-width:780px){.pulse-tabs{align-items:start;flex-direction:column;padding:14px 16px 0}.pulse-tab-list{width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.pulse-tabs a{font-size:16px}.pulse-dashboard{padding:10px 16px 16px}.pulse-lead,.pulse-skeleton-lead{height:auto;grid-template-columns:1fr}.pulse-lead-copy{height:auto;min-height:352px;order:2}.pulse-lead-image{order:1}.pulse-skel-copy{min-height:300px;order:2}.pulse-skel-media{order:1}.pulse-lead h1{font-size:clamp(42px,12vw,58px);line-height:1}.pulse-lead-image,.pulse-skel-media{height:245px;min-height:245px}.pulse-city{right:auto;left:18px}.pulse-story-grid,.pulse-topic-grid,.pulse-global-body,.pulse-divergence-grid{grid-template-columns:1fr}.pulse-wire-item{grid-template-columns:50px minmax(0,1fr) 20px}.pulse-wire-item strong{display:none}.pulse-timeline{margin-inline:16px;grid-template-columns:1fr}.pulse-timeline-label{min-height:48px}.pulse-timeline-label::after{display:none}.pulse-timeline-track,.pulse-timeline-skeleton .pulse-timeline-track{grid-template-columns:1fr;padding-left:20px}.pulse-time-node,.pulse-time-skeleton{min-height:66px}.pulse-lower,.pulse-expanded{padding-inline:16px}}
+@media(max-width:520px){.pulse-home{overflow-x:hidden}.pulse-tabs{gap:10px;padding:12px 12px 0}.pulse-tab-list{overflow-x:auto;justify-content:flex-start;padding-bottom:1px;scrollbar-width:none}.pulse-tab-list::-webkit-scrollbar{display:none}.pulse-tabs a{flex:0 0 auto;font-size:15px}.pulse-tabs p{font-size:13px;white-space:normal}.pulse-dashboard{padding:10px 12px 14px;gap:14px}.pulse-lead-copy{min-height:0;padding:12px 18px 18px;justify-content:flex-start}.pulse-skel-copy{min-height:218px}.pulse-chip,.pulse-image-live{font-size:13px;padding:8px 9px}.pulse-lead h1{margin:10px 0 15px;font-size:clamp(36px,11vw,48px);line-height:.98;-webkit-line-clamp:4}.pulse-meta{font-size:13px}.pulse-deck{margin-top:12px;font-size:17px;line-height:1.32;-webkit-line-clamp:3}.pulse-watch{flex-wrap:wrap;gap:10px;margin-top:16px}.pulse-lead-image,.pulse-skel-media{height:230px;min-height:230px}.pulse-city{top:16px;left:16px;max-width:calc(100% - 122px);font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-image-live{right:14px;top:14px}.pulse-lead-image .pulse-fdi-badge{left:14px;bottom:14px}.pulse-story-grid{gap:12px}.pulse-story-card{height:218px;grid-template-rows:96px 122px}.pulse-story-card>img{height:96px;min-height:96px}.pulse-story-card div{min-height:122px;padding:12px 10px 14px}.pulse-story-card h2{font-size:17px;-webkit-line-clamp:4}.pulse-story-card>.pulse-fdi-badge{right:7px;top:7px}.pulse-update{grid-template-columns:62px minmax(0,1fr);padding-right:0}.pulse-update>span{display:none}.pulse-update p{font-size:14px}.pulse-live-blog{grid-template-columns:1fr auto auto}.pulse-timeline{margin-inline:12px}.pulse-timeline-track,.pulse-timeline-skeleton .pulse-timeline-track{padding-left:12px}.pulse-lower,.pulse-expanded{gap:14px;padding-inline:12px}.pulse-topics,.pulse-global,.pulse-divergence,.pulse-source-wire{padding:13px 10px}.pulse-topic{min-height:94px;grid-template-columns:44px minmax(0,1fr) auto;padding:14px;gap:10px}.pulse-topic svg{width:36px;height:36px}.pulse-global-body{gap:12px}.pulse-city-row{grid-template-columns:minmax(0,1fr) auto 42px;gap:8px}.pulse-city-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pulse-map{height:92px}.pulse-divergence-card{min-height:150px}.pulse-divergence-card h3{font-size:19px}.pulse-wire-item{min-height:64px}}
+.pulse-timeline-skeleton .pulse-timeline-track{display:flex}.pulse-time-skeleton{flex:0 0 184px}@media(max-width:780px){.pulse-timeline-track,.pulse-timeline-skeleton .pulse-timeline-track{grid-template-columns:none}.pulse-time-node,.pulse-time-skeleton{flex-basis:176px}}
 `;
