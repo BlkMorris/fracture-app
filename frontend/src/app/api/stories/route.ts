@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { backendFetch, transformCluster, BackendError } from '../_lib/backend';
+import { backendFetch, transformCluster, BackendError, isEnglishCluster } from '../_lib/backend';
 
 export async function GET(request: NextRequest) {
     try {
@@ -13,9 +13,10 @@ export async function GET(request: NextRequest) {
         );
 
         const items = raw.data ?? raw.stories ?? [];
+        const stories = items.map(transformCluster).filter(isEnglishCluster);
         return NextResponse.json({
-            stories: items.map(transformCluster),
-            total: raw.total ?? 0,
+            stories,
+            total: stories.length,
         });
     } catch (err) {
         if (err instanceof BackendError) {

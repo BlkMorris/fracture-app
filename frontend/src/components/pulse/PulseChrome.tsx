@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import type { PlatformStats, StoryCluster } from "@/types";
+import { normalizeSummary, truncatePlainText } from "@/lib/text-normalization";
 
 export const PULSE_FALLBACK_IMAGE = "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80";
 
@@ -23,16 +24,12 @@ export function storyImage(story: Pick<StoryCluster, "imageUrl"> | null | undefi
 }
 
 export function compactStoryText(value: string | null | undefined, maxLength = 128) {
-  const clean = value?.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim() || "";
-  if (!clean || clean.length <= maxLength) return clean;
-  const clipped = clean.slice(0, maxLength + 1);
-  const boundary = Math.max(clipped.lastIndexOf("."), clipped.lastIndexOf(","), clipped.lastIndexOf(" "));
-  return `${clipped.slice(0, boundary > 72 ? boundary : maxLength).trim()}...`;
+  return truncatePlainText(value, maxLength);
 }
 
 export function storySummary(story: StoryCluster, maxLength = 128) {
   const fallback = `Fracture is tracking how ${story.sourceCount || "multiple"} sources are framing ${story.topic}.`;
-  return compactStoryText(story.summary || fallback, maxLength);
+  return truncatePlainText(normalizeSummary(story.summary || fallback), maxLength, { sentence: true });
 }
 
 export function storyPulse(story: StoryCluster) {
@@ -322,7 +319,7 @@ export function PulseTopbar({ stats }: { stats?: PlatformStats }) {
         <Link className="pulse-logo" href="/" aria-label="Fracture home" onClick={() => setMenuOpen(false)}>
           FRACTURE
         </Link>
-        <div className="pulse-live-badge"><span /> LIVE NOW</div>
+        {/* <div className="pulse-live-badge"><span /> LIVE NOW</div> */}
         <PulseTopbarStats stats={stats} hydrated={hydrated} />
         <form className={`pulse-search-action ${searchOpen ? "is-open" : ""}`} onSubmit={submitSearch} role="search">
           <button type="submit" aria-label={searchOpen ? "Run story search" : "Open story search"} title={searchOpen ? "Run story search" : "Open story search"} data-tooltip={searchOpen ? "Run story search" : "Open story search"}>

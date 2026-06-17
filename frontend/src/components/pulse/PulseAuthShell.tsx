@@ -24,7 +24,7 @@ export function PulseAuthShell({ children, eyebrow, title, subtitle }: PulseAuth
         <Link href="/" className="pulse-auth-logo" aria-label="Fracture home">
           FRACTURE
         </Link>
-        <div className="pulse-live-badge"><span /> LIVE NOW</div>
+        {/* <div className="pulse-live-badge"><span /> LIVE NOW</div> */}
 
         <motion.div className="pulse-auth-copy" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38 }}>
           <p>{eyebrow}</p>

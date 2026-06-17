@@ -3,7 +3,7 @@
 // Hooks — TanStack Query data fetching hooks
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { HomepageData, StoryDetail, StoryCluster, PlatformStats, SearchResult, Source } from '@/types';
+import type { HomepageData, StoryDetail, StoryCluster, PlatformStats, SearchResult, Source, StoryGeneratedSummary } from '@/types';
 
 async function apiFetch<T>(url: string): Promise<T> {
     const res = await fetch(url);
@@ -38,6 +38,15 @@ export function useStory(id: string | null) {
         queryKey: ['story', id],
         queryFn: () => apiFetch(`/api/stories/${id}`),
         enabled: !!id,
+    });
+}
+
+export function useStoryGeneratedSummary(id: string | null) {
+    return useQuery<StoryGeneratedSummary>({
+        queryKey: ['story-summary', id],
+        queryFn: () => apiFetch(`/api/stories/${id}/summary`),
+        enabled: !!id,
+        staleTime: 10 * 60 * 1000,
     });
 }
 

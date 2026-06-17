@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { backendFetch, transformStoryDetail, BackendError } from '../../_lib/backend';
+import { backendFetch, transformStoryDetail, BackendError, isEnglishCluster } from '../../_lib/backend';
 
 export async function GET(
     _request: Request,
@@ -9,6 +9,9 @@ export async function GET(
     try {
         const raw = await backendFetch(`/narrative/cluster/${id}`);
         const data = transformStoryDetail(raw);
+        if (!isEnglishCluster(data.cluster) || data.articles.length === 0) {
+            return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        }
         return NextResponse.json(data);
     } catch (err) {
         if (err instanceof BackendError) {

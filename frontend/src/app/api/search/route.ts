@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { backendFetch, BackendError } from '../_lib/backend';
+import { backendFetch, BackendError, isEnglishArticle, isEnglishCluster, transformArticle, transformCluster } from '../_lib/backend';
 
 export async function GET(request: NextRequest) {
     try {
@@ -12,10 +12,25 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ clusters: [], articles: [], relatedTopics: [], totalClusters: 0, totalArticles: 0 });
         }
 
-        const raw = await backendFetch(
+        const raw = await backendFetch<{
+            clusters?: unknown[];
+            articles?: unknown[];
+            relatedTopics?: string[];
+            totalClusters?: number;
+            totalArticles?: number;
+        }>(
             `/narrative/discover?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}`,
         );
-        return NextResponse.json(raw);
+        const clusters = (raw.clusters ?? []).map(transformCluster).filter(isEnglishCluster);
+        const articles = (raw.articles ?? []).map(transformArticle).filter(isEnglishArticle);
+        return NextResponse.json({
+            ...raw,
+            clusters,
+            articles,
+            relatedTopics: raw.relatedTopics ?? [],
+            totalClusters: clusters.length,
+            totalArticles: articles.length,
+        });
     } catch (err) {
         if (err instanceof BackendError) {
             return NextResponse.json({ error: err.message }, { status: 502 });

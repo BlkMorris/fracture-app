@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, IBM_Plex_Mono, Barlow_Condensed } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
 
@@ -62,7 +63,9 @@ html.pulse-ready::before{opacity:0}
             {children}
           </Providers>
         </div>
-        <script
+        <Script
+          id="pulse-boot-release"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
 (() => {

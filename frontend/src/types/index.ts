@@ -104,6 +104,13 @@ export interface StoryDetail {
   timeline: TimelineEntry[];
 }
 
+export interface StoryGeneratedSummary {
+  summary: string;
+  provider: 'openai' | 'extractive';
+  generatedAt: string;
+  model: string;
+}
+
 export interface TimelineEntry {
   articleId: string;
   sourceSlug: string;

@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { use, useEffect, useMemo, useState, type FormEvent } from "react";
+import type { CSSProperties } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { AlertTriangle, Bookmark, CheckCircle2, Clock3, Headphones, MessageSquare, Send, Share2, Sparkles, X, XCircle } from "lucide-react";
 import { useStats, useStories, useStory } from "@/hooks/useStories";
-import type { Article, HeadlineEntry, StoryCluster, TimelineEntry } from "@/types";
+import type { Article, HeadlineEntry, StoryCluster, StoryGeneratedSummary, TimelineEntry } from "@/types";
+import { normalizePlainText, normalizeSummary, truncatePlainText } from "@/lib/text-normalization";
 import {
   categoryLabel,
   compactStoryText,
@@ -31,6 +34,12 @@ const REVIEW_OPTIONS = [
 export default function StoryPage({ params }: { params: Promise<{ clusterId: string }> }) {
   const { clusterId } = use(params);
   const { data, isLoading, error } = useStory(clusterId);
+  const { data: generatedSummary, isLoading: summaryLoading } = useQuery<StoryGeneratedSummary>({
+    queryKey: ["story-summary", clusterId],
+    queryFn: () => fetchStoryGeneratedSummary(clusterId),
+    enabled: !!clusterId,
+    staleTime: 10 * 60 * 1000,
+  });
   const { data: stats } = useStats();
   const { data: relatedData } = useStories({ limit: 8 });
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
@@ -72,20 +81,23 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
 
   const { cluster, headlineComparison, timeline, divergenceIndex, narrativeFrames } = data;
   const selectedArticle = sortedArticles.find((article) => article.id === selectedArticleId) ?? sortedArticles[0] ?? null;
+  const score = storyDivergence(cluster);
   const headlineRows = buildHeadlineRows(headlineComparison, sortedArticles).slice(0, 7);
+  const divergentHeadlineRows = headlineDivergenceRows(headlineRows, score);
   const pulseItems = buildPulseItems(timeline, sortedArticles).slice(0, 5);
   const relatedStories = (relatedData?.stories ?? []).filter((story) => story.id !== cluster.id).slice(0, 3);
-  const summary = storySummary(cluster, 168);
-  const score = storyDivergence(cluster);
+  const generatedStorySummary = generatedSummary?.summary ?? storySummary(cluster, 260);
   const clusterCategory = storyCategoryLabel(cluster);
   const agreement = narrativeFrames[0]?.title || `${clusterCategory} is the shared center.`;
   const split = narrativeFrames[1]?.title || splitHeadline(sortedArticles);
   const contextRaw = buildStoryContext(cluster, sortedArticles, agreement, split);
-  const context = compactStoryText(contextRaw, 300);
+  const context = truncatePlainText(contextRaw, 300, { sentence: true });
   const hasMoreContext = contextRaw.length > context.length;
   const contextArticle = selectedArticle ?? sortedArticles[0] ?? null;
   const reviewThreshold = 3;
   const reviewThresholdMet = reviewSignals >= reviewThreshold;
+  const articleParagraphs = buildArticleParagraphs(generatedStorySummary, cluster, sortedArticles, score, agreement, split);
+  const titleStyle = storyTitleStyle(cluster.topic);
 
   function toggleReviewIssue(issue: string) {
     setReviewIssues((current) =>
@@ -122,50 +134,51 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
             <Link className="pulse-kicker" href={`/stories?topic=${encodeURIComponent(clusterCategory)}`}>
               <Sparkles size={15} /> Story Detail / {clusterCategory}
             </Link>
-            <motion.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, ease: "easeOut" }}>
+            <motion.h1
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.42, ease: "easeOut" }}
+              style={titleStyle}
+            >
               {cluster.topic}
             </motion.h1>
-            <p className="pulse-deck">{summary}</p>
             <div className="pulse-meta">
               <span><Clock3 size={14} /> Updated <PulseRelativeTime value={cluster.newestArticleAt} /></span>
               <span>{cluster.sourceCount || sortedArticles.length} sources</span>
             </div>
           </header>
 
-          <section className="pulse-summary">
-            <p className="pulse-label">Summary</p>
-            <div className="pulse-context-copy">
-              <p>{cleanText(contextArticle?.summary)}</p>
+          <section className="pulse-article-copy">
+            <div className="pulse-summary-label">
+              <p className="pulse-label">AI-written article</p>
+              <span>{summaryLoading ? "Generating" : generatedSummary?.provider === "openai" ? `Fracture AI Newsroom / ${generatedSummary.model}` : "Fracture AI Newsroom"}</span>
+            </div>
+            <div className="pulse-article-body">
+              <p className="pulse-byline">By Fracture AI Newsroom <span>Analysis generated from tracked source coverage</span></p>
+              <p className="pulse-lede">{summaryLoading ? "Fracture is preparing a clean article-style read from the available source coverage." : articleParagraphs[0]}</p>
+              {articleParagraphs.slice(1).map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
               {hasMoreContext && contextArticle ? (
-                <button type="button" onClick={() => setSourceModalArticle(contextArticle)}>Read More</button>
+                <button type="button" onClick={() => setSourceModalArticle(contextArticle)}>Inspect source context</button>
               ) : null}
             </div>
           </section>
 
           <section className="pulse-signal-grid" aria-label="Story signal cards">
-            <article><span>Where coverage agrees</span><h2>{agreement}</h2><p>Most coverage is tied to the same underlying event and shared timeline, even as outlets emphasize different consequences.</p></article>
-            <article><span>Where framing splits</span><h2>{split}</h2><p>Fracture detects shifts in headline tone, framing type, source emphasis, and the actors each outlet foregrounds.</p></article>
-            <article><span>Reader cue</span><h2>Watch the verbs.</h2><p>Headlines can steer readers toward different interpretations through emphasis, urgency, and accountability language.</p></article>
-          </section>
-
-          <section className="pulse-copy-block">
-            <div className="pulse-reading-label">
-              <p className="pulse-label">Fracture reading</p>
-              <span>{clusterCategory}</span>
-            </div>
-            <div className="pulse-reading-body">
-              <h2>{score}/100 divergence means this story is moving across frames.</h2>
-              <p>{whyCoverageMatters(cluster, score, sortedArticles)}</p>
-            </div>
+            <article><span>Shared record</span><h2>{agreement}</h2><p>The article read begins from what the tracked coverage appears to agree on before introducing Fracture&apos;s source comparison.</p></article>
+            <article><span>FDI signal</span><h2>{score}/100 divergence</h2><p>{fdiSignalCopy(score)} Fracture uses this score to decide whether headline conflict deserves emphasis.</p></article>
+            <article><span>Reader cue</span><h2>Watch the verbs.</h2><p>Look for headline verbs that assign urgency, blame, consequence, or uncertainty differently from outlet to outlet.</p></article>
           </section>
 
           <section className="pulse-headlines">
             <div className="pulse-section-heading">
-              <p className="pulse-label">Headline comparison</p>
-              <h2>Same story, different framing</h2>
+              <p className="pulse-label">Conflicting headlines</p>
+              <h2>{divergentHeadlineRows.length ? "Where the framing actually diverges" : "No major headline split detected"}</h2>
             </div>
+            {!divergentHeadlineRows.length ? (
+              <p className="pulse-no-divergence">Fracture is not elevating conflicting headlines here because the current FDI and headline spread do not show a clear divergence pattern.</p>
+            ) : null}
             <div className="pulse-headline-list">
-              {headlineRows.map((row) => {
+              {divergentHeadlineRows.map((row) => {
                 const rowArticle = sortedArticles.find((article) => article.id === row.id) ?? null;
                 return (
                   <button
@@ -224,7 +237,7 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
           <section className="pulse-feedback" aria-label="Reader accuracy feedback">
             <div className="pulse-section-heading">
               <p className="pulse-label">Reader check</p>
-              <h2>Did Fracture analyze this story correctly?</h2>
+              <h2>Does the AI read match the coverage?</h2>
             </div>
             <div className="pulse-feedback-actions">
               <button type="button" className={feedbackChoice === "accurate" ? "active" : ""} onClick={() => {
@@ -532,12 +545,62 @@ function uniqueSourceArticles(articles: Article[]) {
 }
 
 function cleanText(value: string | null | undefined) {
-  return value?.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim() || "";
+  return normalizePlainText(value);
+}
+
+async function fetchStoryGeneratedSummary(id: string) {
+  const response = await fetch(`/api/stories/${id}/summary`);
+  if (!response.ok) throw new Error(`Story summary error: ${response.status}`);
+  return response.json() as Promise<StoryGeneratedSummary>;
 }
 
 function whyCoverageMatters(cluster: StoryCluster, score: number, articles: Article[]) {
   const sourceCount = cluster.sourceCount || articles.length;
   return `Readers may leave with a different understanding depending on which of the ${sourceCount} tracked outlets they encounter first. A ${score}/100 score means Fracture sees measurable distance in framing, tone, or emphasis.`;
+}
+
+function fdiSignalCopy(score: number) {
+  if (score >= 70) return "This story is highly fractured across the measured coverage.";
+  if (score >= 45) return "This story has a meaningful split across measured coverage.";
+  return "This story is moving with limited measurable divergence so far.";
+}
+
+function storyTitleStyle(title: string): CSSProperties {
+  const length = title.length;
+  const wordCount = title.split(/\s+/).filter(Boolean).length;
+  const size =
+    length <= 48 && wordCount <= 7
+      ? "clamp(58px, 6.8vw, 108px)"
+      : length <= 76
+        ? "clamp(50px, 5.6vw, 88px)"
+        : length <= 110
+          ? "clamp(42px, 4.6vw, 70px)"
+          : "clamp(34px, 3.6vw, 56px)";
+  const lineHeight = length > 110 ? "1.04" : length > 76 ? "1" : ".94";
+  const letterSpacing = length > 76 ? "-.04em" : "-.055em";
+
+  return {
+    "--story-title-size": size,
+    "--story-title-line": lineHeight,
+    "--story-title-spacing": letterSpacing,
+  } as CSSProperties;
+}
+
+function buildArticleParagraphs(summary: string, cluster: StoryCluster, articles: Article[], score: number, agreement: string, split: string) {
+  const sourceCount = cluster.sourceCount || articles.length;
+  const articleCount = cluster.articleCount || articles.length;
+  const cleanSummary = truncatePlainText(normalizeSummary(summary || cluster.summary || cluster.topic), 420, { sentence: true });
+  const newestArticle = [...articles].sort((a, b) => Date.parse(b.publishedAt || "") - Date.parse(a.publishedAt || ""))[0];
+  const newestSource = newestArticle?.source?.name;
+  const agreementText = normalizePlainText(agreement).replace(/[.!?]+$/g, "");
+  const splitText = normalizePlainText(split).replace(/[.!?]+$/g, "");
+
+  return [
+    cleanSummary || `Fracture is following ${cluster.topic} as coverage develops across tracked outlets.`,
+    `The central fact pattern is being tracked across ${articleCount} articles from ${sourceCount} sources${newestSource ? `, with the latest signal coming from ${newestSource}` : ""}. Fracture's AI newsroom is writing this as a reader-first brief, then attaching the source signals that explain where the story may be separating.`,
+    `The shared coverage center: ${agreementText || "the same underlying event is driving the story"}. The possible split: ${splitText || "outlets are placing different weight on tone, emphasis, and accountability"}.`,
+    whyCoverageMatters(cluster, score, articles),
+  ];
 }
 
 function buildStoryContext(cluster: StoryCluster, articles: Article[], agreement: string, split: string) {
@@ -546,8 +609,10 @@ function buildStoryContext(cluster: StoryCluster, articles: Article[], agreement
   const outletText = outlets.length ? ` including ${outlets.join(", ")}` : "";
   const newest = articles.find((article) => article.publishedAt)?.source?.name;
   const updateText = newest ? ` The newest tracked signal comes through ${newest}.` : "";
+  const agreementText = normalizePlainText(agreement).replace(/[.!?]+$/g, "").toLowerCase();
+  const splitText = normalizePlainText(split).replace(/[.!?]+$/g, "").toLowerCase();
 
-  return `Fracture is comparing how ${sourceCount} sources${outletText} are framing ${cluster.topic}. The shared center is ${agreement.toLowerCase()} The clearest split is ${split.toLowerCase()} This context weighs headline language, framing type, source emphasis, and update timing so the story is read as a live pattern across outlets instead of a single isolated article.${updateText}`;
+  return normalizeSummary(`Fracture is comparing how ${sourceCount} sources${outletText} are framing ${cluster.topic}. The shared center is ${agreementText}. The clearest split is ${splitText}. This context weighs headline language, framing type, source emphasis, and update timing so the story is read as a live pattern across outlets instead of a single isolated article.${updateText}`);
 }
 
 function splitHeadline(articles: Article[]) {
@@ -577,44 +642,54 @@ function buildPulseItems(timeline: TimelineEntry[], articles: Article[]) {
   const entries = timeline.length
     ? timeline.map((item) => ({ sourceName: item.sourceName, time: item.publishedAt, title: item.title }))
     : articles.map((article) => ({ sourceName: article.source?.name || "Source", time: article.publishedAt || "", title: article.title }));
-  return entries.map((entry) => ({ sourceName: entry.sourceName, time: formatClock(entry.time), title: cleanText(entry.title) })).slice(0, 5);
+  return entries.map((entry) => ({ sourceName: cleanText(entry.sourceName), time: formatClock(entry.time), title: truncatePlainText(entry.title, 96, { headline: true }) })).slice(0, 5);
 }
 
 function buildHeadlineRows(headlines: HeadlineEntry[], articles: Article[]) {
   if (headlines.length) {
     return headlines.map((headline) => ({
       id: headline.articleId,
-      sourceName: headline.sourceName,
-      headline: cleanText(headline.headline),
+      sourceName: cleanText(headline.sourceName),
+      headline: truncatePlainText(headline.headline, 118, { headline: true }),
       score: Math.round(Math.abs(headline.sentiment ?? 0) * 45 + Math.abs(headline.lean ?? 0) * 35 + 20),
       url: articles.find((article) => article.id === headline.articleId)?.url,
     }));
   }
   return articles.map((article) => ({
     id: article.id,
-    sourceName: article.source?.name || "Source",
-    headline: cleanText(article.title),
+    sourceName: cleanText(article.source?.name) || "Source",
+    headline: truncatePlainText(article.title, 118, { headline: true }),
     score: Math.round(Math.abs(article.headlineSentiment ?? 0) * 45 + Math.abs(article.politicalLeanScore ?? 0) * 35 + 20),
     url: article.url,
   }));
+}
+
+function headlineDivergenceRows(rows: ReturnType<typeof buildHeadlineRows>, score: number) {
+  if (score < 45 || rows.length < 2) return [];
+
+  const ranked = [...rows].sort((a, b) => b.score - a.score);
+  const topScore = ranked[0]?.score ?? 0;
+  const floor = score >= 70 ? 48 : 55;
+  return ranked.filter((row) => row.score >= floor || topScore - row.score <= 12).slice(0, 5);
 }
 
 const styles = `
 .pulse-detail{--chalk:#FCFCF8;--night:#101114;--orange:#FF5A1F;--cyan:#14B8C8;--warm:#D9D4CC;--ink-2:#323338;--muted:#717174;--line:rgba(16,17,20,.16);--soft:#F0EEE7;min-height:100vh;background:var(--chalk);color:var(--night);font-family:Inter,"Public Sans",Arial,sans-serif;letter-spacing:0}.pulse-detail *,.pulse-detail *::before,.pulse-detail *::after{box-sizing:border-box}.pulse-detail a{color:inherit;text-decoration:none}.pulse-detail button{font:inherit}
 ${pulseChromeStyles}
 .pulse-detail-layout{display:grid;grid-template-columns:76px minmax(0,1fr) 340px;gap:28px;padding:28px max(18px,calc((100vw - 1420px)/2)) 64px}.pulse-tools{position:sticky;top:28px;align-self:start;display:grid;gap:10px}.pulse-tools button{display:inline-flex;align-items:center;justify-content:center;border:1px solid currentColor;background:var(--chalk);color:inherit;cursor:pointer;width:58px;height:58px;transition:color 160ms ease,transform 160ms ease}.pulse-tools button:hover{color:var(--orange);transform:translateY(-1px)}.pulse-tools span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-.pulse-story{min-width:0;background:rgba(255,255,255,.34)}.pulse-hero{padding:38px 0 34px;border-bottom:3px solid var(--night)}.pulse-kicker,.pulse-meta>span:not(.pulse-fdi-badge){display:inline-flex;align-items:center}.pulse-kicker{gap:8px;color:var(--orange);font-size:12px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}.pulse-hero h1{max-width:980px;margin:20px 0 18px;color:var(--night);font-size:clamp(54px,7vw,112px);line-height:.88;font-weight:1000;letter-spacing:-.065em}.pulse-deck{max-width:760px;margin:0;color:var(--ink-2);font-size:22px;line-height:1.36}.pulse-meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:24px}.pulse-meta>span:not(.pulse-fdi-badge){gap:7px;border:1px solid var(--line);background:var(--soft);color:var(--night);padding:8px 10px;font-size:12px;font-weight:850}
-.pulse-summary{display:grid;grid-template-columns:180px minmax(0,1fr);gap:28px;padding:28px 0;border-bottom:1px solid var(--line)}.pulse-context-copy{display:grid;gap:16px;justify-items:start}.pulse-context-copy p{max-width:860px;margin:0;color:var(--night);font-size:24px;line-height:1.34;font-weight:760;letter-spacing:-.02em}.pulse-context-copy button{border:1px solid var(--night);background:var(--night);color:var(--chalk);padding:10px 12px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease}.pulse-context-copy button:hover{background:var(--orange);color:white;transform:translateY(-1px)}.pulse-label{margin:0;color:var(--orange);font-size:11px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}
+.pulse-story{min-width:0;background:rgba(255,255,255,.34)}.pulse-hero{padding:38px 0 34px;border-bottom:3px solid var(--night)}.pulse-kicker,.pulse-meta>span:not(.pulse-fdi-badge){display:inline-flex;align-items:center}.pulse-kicker{gap:8px;color:var(--orange);font-size:12px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}.pulse-hero h1{max-width:980px;margin:20px 0 20px;color:var(--night);font-size:var(--story-title-size,clamp(54px,7vw,112px));line-height:var(--story-title-line,.94);font-weight:1000;letter-spacing:var(--story-title-spacing,-.055em);overflow-wrap:anywhere}.pulse-deck{max-width:760px;margin:0;color:var(--ink-2);font-size:22px;line-height:1.36}.pulse-meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:24px}.pulse-meta>span:not(.pulse-fdi-badge){gap:7px;border:1px solid var(--line);background:var(--soft);color:var(--night);padding:8px 10px;font-size:12px;font-weight:850}
+.pulse-summary{display:grid;grid-template-columns:180px minmax(0,1fr);gap:28px;padding:28px 0;border-bottom:1px solid var(--line)}.pulse-summary-label{display:grid;align-content:start;gap:10px}.pulse-summary-label span{display:inline-flex;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--soft);color:var(--night);padding:7px 9px;font-size:11px;font-weight:950;text-transform:uppercase}.pulse-context-copy{display:grid;gap:16px;justify-items:start}.pulse-context-copy p{max-width:860px;margin:0;color:var(--night);font-size:24px;line-height:1.34;font-weight:760;letter-spacing:-.02em}.pulse-context-copy button{border:1px solid var(--night);background:var(--night);color:var(--chalk);padding:10px 12px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease}.pulse-context-copy button:hover{background:var(--orange);color:white;transform:translateY(-1px)}.pulse-label{margin:0;color:var(--orange);font-size:11px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}
+.pulse-article-copy{display:grid;grid-template-columns:180px minmax(0,1fr);gap:28px;padding:32px 0 34px;border-bottom:1px solid var(--line)}.pulse-article-body{max-width:760px;display:grid;gap:18px;justify-items:start}.pulse-byline{margin:0;color:var(--night);font-size:13px;font-weight:950;text-transform:uppercase}.pulse-byline span{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:850;text-transform:none}.pulse-article-body p{margin:0;color:var(--ink-2);font-size:19px;line-height:1.62;font-weight:680}.pulse-article-body .pulse-lede{color:var(--night);font-size:26px;line-height:1.34;font-weight:820;letter-spacing:-.018em}.pulse-article-body button{border:1px solid var(--night);background:var(--night);color:var(--chalk);padding:10px 12px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease}.pulse-article-body button:hover{background:var(--orange);color:white;transform:translateY(-1px)}
 .pulse-signal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}.pulse-signal-grid article{min-height:220px;padding:24px 22px 24px 0;border-right:1px solid var(--line)}.pulse-signal-grid article+article{padding-left:22px}.pulse-signal-grid article:last-child{border-right:0}.pulse-signal-grid span,.pulse-source-list span,.pulse-related span{color:var(--cyan);font-size:11px;font-weight:950;text-transform:uppercase}.pulse-signal-grid h2,.pulse-copy-block h2,.pulse-section-heading h2{margin:8px 0 10px;color:var(--night);font-size:28px;line-height:1.02;font-weight:950;letter-spacing:-.04em}.pulse-signal-grid p,.pulse-copy-block p,.pulse-timeline p{margin:0;color:var(--muted);line-height:1.45}
-.pulse-spectrum,.pulse-copy-block,.pulse-headlines,.pulse-feedback,.pulse-comments{padding:30px 0;border-bottom:1px solid var(--line)}.pulse-section-heading{display:flex;align-items:end;justify-content:space-between;gap:22px;margin-bottom:24px}.pulse-section-heading.compact{display:block;margin-bottom:14px}.pulse-section-heading.compact h2{font-size:22px}.pulse-track{position:relative;height:138px;margin:26px 4px 32px;border-block:1px solid var(--night);overflow:visible}.pulse-track::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:var(--night);transform:translateY(-50%)}.pulse-track>span{position:absolute;top:12px;color:var(--muted);font-size:12px;font-weight:850}.pulse-track>span:nth-child(1){left:0}.pulse-track>span:nth-child(2){left:50%;transform:translateX(-50%)}.pulse-track>span:nth-child(3){right:0}.pulse-track button{position:absolute;top:50%;width:44px;height:44px;border:2px solid var(--night);background:var(--chalk);color:var(--night);font-weight:950;transform:translate(-50%,-50%);cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease}.pulse-track button::after{content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 12px);z-index:5;width:max-content;max-width:210px;padding:9px 10px;border:1px solid var(--night);background:var(--night);color:var(--chalk);box-shadow:5px 5px 0 var(--orange);font-size:11px;line-height:1.2;font-weight:900;text-transform:none;white-space:normal;opacity:0;pointer-events:none;transform:translate(-50%,6px);transition:opacity 150ms ease,transform 150ms ease}.pulse-track button::before{content:"";position:absolute;left:50%;bottom:calc(100% + 5px);z-index:6;border-left:7px solid transparent;border-right:7px solid transparent;border-top:7px solid var(--night);opacity:0;pointer-events:none;transform:translate(-50%,6px);transition:opacity 150ms ease,transform 150ms ease}.pulse-track button:hover,.pulse-track button.active{background:var(--orange);color:var(--chalk);transform:translate(-50%,-50%) scale(1.08)}.pulse-track button:hover::after,.pulse-track button:focus-visible::after,.pulse-track button:hover::before,.pulse-track button:focus-visible::before{opacity:1;transform:translate(-50%,0)}
-.pulse-source-list{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-source-list button{min-height:150px;padding:16px;border:0;background:var(--chalk);color:var(--night);text-align:left;cursor:pointer;transition:background 160ms ease,transform 160ms ease}.pulse-source-list button:hover{background:white;transform:translateY(-2px)}.pulse-source-list strong{display:block;margin:8px 0 10px;font-size:15px;line-height:1.2}.pulse-source-list i{color:var(--orange);font-size:12px;font-style:normal;font-weight:850}.pulse-copy-block{display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);gap:30px;align-items:start;background:linear-gradient(90deg,rgba(255,255,255,.64),rgba(255,255,255,.22));padding:34px 28px;border:1px solid var(--line);border-inline:0}.pulse-reading-label{display:grid;gap:12px;align-content:start}.pulse-reading-label span{display:inline-flex;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--soft);padding:8px 10px;color:var(--night);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-reading-body{max-width:800px}.pulse-copy-block h2{margin:0;font-size:44px;max-width:760px}.pulse-copy-block p:last-child{max-width:760px;margin:18px 0 0;color:var(--ink-2);font-size:19px;line-height:1.58}
+.pulse-spectrum,.pulse-copy-block,.pulse-headlines,.pulse-feedback,.pulse-comments{padding:30px 0;border-bottom:1px solid var(--line)}.pulse-section-heading{display:flex;align-items:end;justify-content:space-between;gap:22px;margin-bottom:24px}.pulse-section-heading.compact{display:block;margin-bottom:14px}.pulse-section-heading.compact h2{font-size:22px}.pulse-no-divergence{max-width:620px;margin:-8px 0 20px;color:var(--muted);font-size:16px;line-height:1.48;font-weight:760}.pulse-track{position:relative;height:138px;margin:26px 4px 32px;border-block:1px solid var(--night);overflow:visible}.pulse-track::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:var(--night);transform:translateY(-50%)}.pulse-track>span{position:absolute;top:12px;color:var(--muted);font-size:12px;font-weight:850}.pulse-track>span:nth-child(1){left:0}.pulse-track>span:nth-child(2){left:50%;transform:translateX(-50%)}.pulse-track>span:nth-child(3){right:0}.pulse-track button{position:absolute;top:50%;width:44px;height:44px;border:2px solid var(--night);background:var(--chalk);color:var(--night);font-weight:950;transform:translate(-50%,-50%);cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease}.pulse-track button::after{content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 12px);z-index:5;width:max-content;max-width:210px;padding:9px 10px;border:1px solid var(--night);background:var(--night);color:var(--chalk);box-shadow:5px 5px 0 var(--orange);font-size:11px;line-height:1.2;font-weight:900;text-transform:none;white-space:normal;opacity:0;pointer-events:none;transform:translate(-50%,6px);transition:opacity 150ms ease,transform 150ms ease}.pulse-track button::before{content:"";position:absolute;left:50%;bottom:calc(100% + 5px);z-index:6;border-left:7px solid transparent;border-right:7px solid transparent;border-top:7px solid var(--night);opacity:0;pointer-events:none;transform:translate(-50%,6px);transition:opacity 150ms ease,transform 150ms ease}.pulse-track button:hover,.pulse-track button.active{background:var(--orange);color:var(--chalk);transform:translate(-50%,-50%) scale(1.08)}.pulse-track button:hover::after,.pulse-track button:focus-visible::after,.pulse-track button:hover::before,.pulse-track button:focus-visible::before{opacity:1;transform:translate(-50%,0)}
+.pulse-source-list{display:flex;flex-wrap:wrap;justify-content:center;gap:1px;background:transparent}.pulse-source-list button{flex:0 1 calc((100% - 4px)/5);max-width:calc((100% - 4px)/5);min-width:150px;min-height:150px;padding:16px;border:0;background:var(--chalk);color:var(--night);text-align:left;cursor:pointer;transition:background 160ms ease,transform 160ms ease}.pulse-source-list button:hover{background:white;transform:translateY(-2px)}.pulse-source-list strong{display:block;margin:8px 0 10px;font-size:15px;line-height:1.2}.pulse-source-list i{color:var(--orange);font-size:12px;font-style:normal;font-weight:850}.pulse-copy-block{display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);gap:30px;align-items:start;background:linear-gradient(90deg,rgba(255,255,255,.64),rgba(255,255,255,.22));padding:34px 28px;border:1px solid var(--line);border-inline:0}.pulse-reading-label{display:grid;gap:12px;align-content:start}.pulse-reading-label span{display:inline-flex;width:max-content;max-width:100%;border:1px solid var(--line);background:var(--soft);padding:8px 10px;color:var(--night);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-reading-body{max-width:800px}.pulse-copy-block h2{margin:0;font-size:44px;max-width:760px}.pulse-copy-block p:last-child{max-width:760px;margin:18px 0 0;color:var(--ink-2);font-size:19px;line-height:1.58}
 .pulse-headline-list{display:grid;gap:8px}.pulse-headline-list button{display:grid;grid-template-columns:150px minmax(0,1fr) 52px;gap:16px;align-items:center;border:1px solid var(--line);background:white;color:var(--night);padding:14px 16px;text-align:left;cursor:pointer;transition:border-color 160ms ease,transform 160ms ease}.pulse-headline-list button:hover,.pulse-headline-list button.active{border-color:var(--night);transform:translateX(2px)}.pulse-headline-list span{color:var(--cyan);font-size:12px;font-weight:950;text-transform:uppercase}.pulse-headline-list strong{font-size:16px;line-height:1.18}.pulse-headline-list small{display:grid;place-items:center;background:var(--night);color:white;width:44px;height:34px;font-weight:950}
 .pulse-feedback{display:grid;gap:16px}.pulse-feedback .pulse-section-heading{margin-bottom:2px}.pulse-feedback-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pulse-feedback-actions button{height:58px;border:1px solid var(--night);background:white;color:var(--night);display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:14px;font-weight:950;text-transform:uppercase;cursor:pointer;transition:background 160ms ease,color 160ms ease,transform 160ms ease,box-shadow 160ms ease}.pulse-feedback-actions button:hover,.pulse-feedback-actions button.active{background:var(--night);color:white;transform:translateY(-1px);box-shadow:5px 5px 0 var(--orange)}.pulse-review-status{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--line);background:rgba(255,255,255,.62);padding:13px}.pulse-review-status svg{margin-top:2px;color:var(--cyan)}.pulse-review-status.is-alert{border-color:var(--orange);background:rgba(255,90,31,.09);box-shadow:5px 5px 0 rgba(255,90,31,.18)}.pulse-review-status.is-alert svg{color:var(--orange)}.pulse-review-status strong{display:block;color:var(--night);font-size:15px;font-weight:950;text-transform:uppercase}.pulse-review-status p{margin:4px 0 0!important;color:var(--muted);font-size:14px;line-height:1.35}.pulse-feedback>p{max-width:620px;margin:0;color:var(--muted);font-size:14px;line-height:1.42}.pulse-comments form{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:start;gap:12px;border:1px solid var(--night);background:white;padding:14px;box-shadow:7px 7px 0 var(--orange)}.pulse-comments form>svg{margin-top:9px;color:var(--cyan)}.pulse-comments textarea{min-height:88px;resize:vertical;border:0;outline:0;background:transparent;color:var(--night);font:inherit;font-size:15px;font-weight:800;line-height:1.35}.pulse-comments textarea::placeholder{color:rgba(16,17,20,.42)}.pulse-comments form button{height:40px;border:0;background:var(--night);color:white;padding:0 13px;display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-comment-list{display:grid;gap:8px;margin-top:18px}.pulse-comment-list>p,.pulse-comment-list article{margin:0;border:1px solid var(--line);background:rgba(255,255,255,.62);padding:13px}.pulse-comment-list span{display:block;margin-bottom:6px;color:var(--orange);font-size:11px;font-weight:950;text-transform:uppercase}.pulse-comment-list p{margin:0;color:var(--ink-2);font-size:15px;line-height:1.4;font-weight:760}
 .pulse-rail{position:sticky;top:28px;align-self:start;display:grid;gap:14px}.pulse-rail-card{border:1px solid var(--night);background:var(--chalk);padding:16px}.pulse-score{display:grid;gap:14px;background:var(--night);color:var(--chalk);padding:18px}.pulse-score .pulse-label{color:var(--cyan)}.pulse-score .pulse-fdi-badge{width:100%;grid-template-columns:minmax(0,1fr) auto;margin:0;color:var(--night);box-shadow:5px 5px 0 var(--orange)}.pulse-score .pulse-fdi-badge strong{justify-self:end}.pulse-score-count{display:block;border-top:1px solid rgba(252,252,248,.18);border-bottom:1px solid rgba(252,252,248,.18);padding:11px 0;color:rgba(252,252,248,.78);font-size:13px;font-weight:850;line-height:1.3}.pulse-meter{height:9px;background:rgba(252,252,248,.18)}.pulse-meter i{display:block;height:100%;background:var(--orange)}.pulse-timeline{display:grid;border-top:1px solid var(--line)}.pulse-timeline article{position:relative;padding:14px 0 14px 30px;border-bottom:1px solid var(--line)}.pulse-timeline article::before{content:"";position:absolute;left:10px;top:21px;width:8px;height:8px;border-radius:999px;background:var(--muted)}.pulse-timeline .tone-orange::before{background:var(--orange)}.pulse-timeline .tone-cyan::before{background:var(--cyan)}.pulse-timeline time{color:var(--muted);font-family:"Geist Mono","IBM Plex Mono",ui-monospace,monospace;font-size:11px}.pulse-timeline strong{display:block;margin:4px 0;color:var(--night);font-size:14px}.pulse-selected-source strong{display:block;margin:8px 0;font-size:22px;letter-spacing:-.03em}.pulse-selected-source p{color:var(--muted);line-height:1.4}.pulse-selected-source button{border:0;background:transparent;color:var(--orange);padding:0;font-size:13px;font-weight:950;cursor:pointer}.pulse-mix{display:grid;gap:8px}.pulse-mix span{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;font-size:13px}.pulse-related{display:grid;gap:1px;background:var(--line)}.pulse-related a{display:grid;gap:5px;background:var(--chalk);padding:12px}.pulse-related strong{color:var(--night);font-size:15px;line-height:1.18}.pulse-related small{color:var(--muted)}
 .pulse-source-modal{position:fixed;inset:0;z-index:500;display:grid;place-items:center;padding:24px}.pulse-source-modal-backdrop{position:absolute;inset:0;border:0;background:rgba(16,17,20,.58);cursor:pointer}.pulse-source-modal-panel{position:relative;z-index:1;width:min(760px,100%);max-height:min(82vh,760px);overflow:auto;border:1px solid var(--night);background:var(--chalk);color:var(--night);padding:24px;box-shadow:12px 12px 0 var(--orange)}.pulse-source-modal-head{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding-bottom:14px}.pulse-source-modal-head button{border:1px solid var(--night);background:white;color:var(--night);height:36px;padding:0 12px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-source-modal-meta{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.pulse-source-modal-meta span,.pulse-source-modal-meta time{border:1px solid var(--line);background:white;padding:7px 9px;font-size:12px;font-weight:900}.pulse-source-modal-meta span:first-child{color:var(--cyan);text-transform:uppercase}.pulse-source-modal h2{max-width:680px;margin:0;font-size:clamp(34px,5vw,64px);line-height:.94;font-weight:1000;letter-spacing:-.055em}.pulse-source-modal-panel>p{max-width:620px;margin:18px 0 22px;color:var(--ink-2);font-size:18px;line-height:1.5}.pulse-source-modal dl{display:grid;gap:1px;margin:0;background:var(--line)}.pulse-source-modal dl div{display:grid;grid-template-columns:140px minmax(0,1fr);gap:14px;background:white;padding:13px}.pulse-source-modal dt{color:var(--orange);font-size:11px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}.pulse-source-modal dd{min-width:0;margin:0;color:var(--night);font-size:13px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
 .pulse-review-modal{position:fixed;inset:0;z-index:520;display:grid;place-items:center;padding:24px}.pulse-review-modal-backdrop{position:absolute;inset:0;border:0;background:rgba(16,17,20,.58);cursor:pointer}.pulse-review-modal-panel{position:relative;z-index:1;display:grid;gap:16px;width:min(700px,100%);max-height:min(86vh,760px);overflow:auto;border:1px solid var(--night);background:var(--chalk);color:var(--night);padding:24px;box-shadow:12px 12px 0 var(--cyan)}.pulse-review-modal-head{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding-bottom:14px}.pulse-review-modal-head button{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--night);background:white;color:var(--night);cursor:pointer}.pulse-review-modal h2{max-width:620px;margin:0;font-size:clamp(34px,5vw,62px);line-height:.94;font-weight:1000;letter-spacing:-.055em}.pulse-review-modal-panel>p{max-width:590px;margin:0;color:var(--muted);font-size:16px;line-height:1.45;font-weight:800}.pulse-review-issues{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.pulse-review-issues button{min-height:48px;border:1px solid var(--line);background:white;color:var(--night);display:inline-flex;align-items:center;gap:9px;padding:0 11px;text-align:left;font-size:13px;font-weight:950;cursor:pointer;transition:border-color 160ms ease,box-shadow 160ms ease,transform 160ms ease}.pulse-review-issues button:hover,.pulse-review-issues button.is-selected{border-color:var(--night);box-shadow:4px 4px 0 var(--orange);transform:translateY(-1px)}.pulse-review-issues button.is-selected svg{color:var(--cyan)}.pulse-review-modal textarea{min-height:112px;resize:vertical;border:1px solid var(--night);background:white;color:var(--night);padding:13px;font:inherit;font-size:15px;font-weight:800;line-height:1.4;outline:0}.pulse-review-modal textarea:focus{box-shadow:5px 5px 0 var(--orange)}.pulse-review-modal-actions{display:flex;justify-content:flex-end;gap:10px}.pulse-review-modal-actions button{height:42px;border:1px solid var(--night);background:white;color:var(--night);padding:0 14px;font-size:12px;font-weight:950;text-transform:uppercase;cursor:pointer}.pulse-review-modal-actions button:last-child{background:var(--night);color:white}.pulse-review-modal-actions button:disabled{opacity:.45;cursor:not-allowed}
 .pulse-tool-skeleton,.pulse-hero-skeleton span,.pulse-hero-skeleton i,.pulse-summary-skeleton span,.pulse-summary-skeleton i,.pulse-signal-skeleton span,.pulse-signal-skeleton i,.pulse-signal-skeleton b,.pulse-spectrum-skeleton span,.pulse-spectrum-skeleton i,.pulse-spectrum-skeleton b,.pulse-rail-card-skeleton span,.pulse-rail-card-skeleton i,.pulse-rail-card-skeleton b{display:block;background:linear-gradient(90deg,#fff,var(--warm),#fff);background-size:200% 100%;animation:skeleton 1.35s ease-in-out infinite}.pulse-tool-skeleton{width:58px;height:58px;border:1px solid var(--line)}.pulse-hero-skeleton{min-height:360px}.pulse-skel-kicker{width:220px;height:13px}.pulse-skel-title{width:min(880px,92%);height:78px;margin-top:24px}.pulse-skel-title.short{width:min(620px,70%);margin-top:12px}.pulse-skel-deck{width:min(720px,76%);height:22px;margin-top:24px}.pulse-skel-deck.narrow{width:min(520px,58%);margin-top:10px}.pulse-skel-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}.pulse-skel-meta i{width:132px;height:34px}.pulse-summary-skeleton span{height:14px;width:92px}.pulse-summary-skeleton i{height:24px;width:86%;margin-bottom:10px}.pulse-summary-skeleton i:last-child{width:62%}.pulse-signal-skeleton span{height:12px;width:46%}.pulse-signal-skeleton i{height:36px;width:88%;margin:18px 0 12px}.pulse-signal-skeleton b{height:58px;width:96%}.pulse-spectrum-skeleton span{height:13px;width:150px}.pulse-spectrum-skeleton i{height:138px;margin:26px 4px 32px}.pulse-spectrum-skeleton div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line)}.pulse-spectrum-skeleton b{height:150px;background-color:var(--chalk)}.pulse-rail-card-skeleton{min-height:132px}.pulse-rail-card-skeleton.is-score{min-height:224px;background:var(--night)}.pulse-rail-card-skeleton span{width:60px;height:12px}.pulse-rail-card-skeleton i{width:72%;height:42px;margin:16px 0}.pulse-rail-card-skeleton b{width:100%;height:11px}.pulse-rail-card-skeleton.is-score span,.pulse-rail-card-skeleton.is-score i,.pulse-rail-card-skeleton.is-score b{background:linear-gradient(90deg,rgba(252,252,248,.1),rgba(217,212,204,.48),rgba(252,252,248,.1));background-size:200% 100%}.pulse-state{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:48px 18px}.pulse-state>div{width:min(760px,100%);border:1px solid var(--night);background:white;padding:38px;box-shadow:10px 10px 0 var(--orange)}.pulse-state h1{max-width:660px;margin:10px 0 12px;font-size:clamp(44px,6vw,82px);line-height:.9;font-weight:1000;letter-spacing:-.06em}.pulse-state p:not(.pulse-label){max-width:520px;margin:0;color:var(--muted);font-size:18px;line-height:1.42}.pulse-state nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.pulse-state a{border:1px solid var(--night);padding:11px 13px;font-size:14px;font-weight:950}.pulse-state a:first-child{background:var(--night);color:white}.pulse-state a:last-child{background:var(--chalk);color:var(--night)}@keyframes skeleton{to{background-position:-200% 0}}
-@media(max-width:1100px){.pulse-detail-layout{grid-template-columns:minmax(0,1fr)}.pulse-tools,.pulse-rail{position:static}.pulse-tools{display:flex;order:2}.pulse-story{order:1}.pulse-rail{order:3;grid-template-columns:repeat(2,minmax(0,1fr))}.pulse-rail-card:first-child{grid-column:1/-1}.pulse-source-list,.pulse-spectrum-skeleton div{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){.pulse-detail-layout{padding-inline:14px}.pulse-summary,.pulse-copy-block{grid-template-columns:1fr}.pulse-signal-grid,.pulse-source-list,.pulse-rail,.pulse-spectrum-skeleton div,.pulse-feedback-actions{grid-template-columns:1fr}.pulse-signal-grid article,.pulse-signal-grid article+article{padding:22px 0;border-right:0;border-bottom:1px solid var(--line)}.pulse-hero h1{font-size:clamp(42px,13vw,62px);line-height:.96}.pulse-deck{font-size:19px}.pulse-tools{gap:8px}.pulse-tools button,.pulse-tool-skeleton{width:48px;height:48px}.pulse-headline-list button{grid-template-columns:1fr}.pulse-comments form{grid-template-columns:1fr}.pulse-comments form>svg{display:none}.pulse-comments form button{justify-content:center}.pulse-copy-block{padding:26px 20px}.pulse-copy-block h2{font-size:34px}.pulse-section-heading{display:block}.pulse-skel-title{height:50px}.pulse-state h1{font-size:44px}.pulse-state>div{padding:26px;box-shadow:6px 6px 0 var(--orange)}}
-@media(max-width:520px){.pulse-detail{overflow-x:hidden}.pulse-detail-layout{gap:18px;padding:20px 12px 44px}.pulse-hero{padding:24px 0 26px}.pulse-kicker{font-size:11px;line-height:1.3}.pulse-hero h1{font-size:clamp(36px,11vw,54px);letter-spacing:-.045em}.pulse-deck{font-size:18px}.pulse-meta{gap:8px;margin-top:18px}.pulse-meta>span:not(.pulse-fdi-badge){max-width:100%;font-size:12px}.pulse-summary{gap:12px;padding:22px 0}.pulse-context-copy p{font-size:20px}.pulse-signal-grid article,.pulse-signal-grid article+article{min-height:auto;padding:20px 0}.pulse-signal-grid h2,.pulse-section-heading h2{font-size:24px}.pulse-spectrum,.pulse-headlines{padding:24px 0}.pulse-track{height:126px;margin:22px 22px 26px}.pulse-track button{width:38px;height:38px;font-size:12px}.pulse-track>span{font-size:11px}.pulse-source-list button{min-height:auto;padding:14px}.pulse-copy-block{gap:14px;padding:22px 16px}.pulse-reading-label{gap:9px}.pulse-reading-label span{padding:7px 9px;font-size:11px}.pulse-copy-block h2{font-size:30px;line-height:1.04}.pulse-copy-block p:last-child{font-size:17px;margin-top:14px}.pulse-headline-list button{gap:9px;padding:13px}.pulse-headline-list small{width:40px;height:30px}.pulse-tools{overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.pulse-tools::-webkit-scrollbar{display:none}.pulse-tools button,.pulse-tool-skeleton{flex:0 0 46px;width:46px;height:46px}.pulse-rail{gap:12px}.pulse-rail-card{padding:14px}.pulse-score{gap:12px;padding:15px}.pulse-score .pulse-fdi-badge{box-shadow:4px 4px 0 var(--orange)}.pulse-score-count{padding:10px 0}.pulse-selected-source strong{font-size:20px}.pulse-skel-title{width:100%;height:46px}.pulse-skel-title.short{width:72%}.pulse-skel-deck{width:88%}.pulse-skel-meta i{width:112px;height:32px}.pulse-spectrum-skeleton i{height:126px;margin:22px 4px 26px}.pulse-spectrum-skeleton b{height:96px}.pulse-rail-card-skeleton{min-height:116px}.pulse-rail-card-skeleton.is-score{min-height:200px}.pulse-source-modal,.pulse-review-modal{padding:12px}.pulse-source-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--orange)}.pulse-source-modal-head{align-items:flex-start}.pulse-source-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-source-modal-panel>p{font-size:16px}.pulse-source-modal dl div{grid-template-columns:1fr;gap:6px}.pulse-review-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--cyan)}.pulse-review-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-review-issues{grid-template-columns:1fr}.pulse-review-modal-actions{display:grid;grid-template-columns:1fr}.pulse-state{padding:32px 12px}.pulse-state>div{padding:22px}.pulse-state h1{font-size:clamp(34px,10vw,48px)}.pulse-state nav{display:grid;grid-template-columns:1fr}.pulse-state a{justify-content:center;text-align:center}}
+@media(max-width:1100px){.pulse-detail-layout{grid-template-columns:minmax(0,1fr)}.pulse-tools,.pulse-rail{position:static}.pulse-tools{display:flex;order:2}.pulse-story{order:1}.pulse-rail{order:3;grid-template-columns:repeat(2,minmax(0,1fr))}.pulse-rail-card:first-child{grid-column:1/-1}.pulse-source-list button{flex-basis:calc((100% - 1px)/2);max-width:calc((100% - 1px)/2)}.pulse-spectrum-skeleton div{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.pulse-detail-layout{padding-inline:14px}.pulse-summary,.pulse-article-copy,.pulse-copy-block{grid-template-columns:1fr}.pulse-signal-grid,.pulse-rail,.pulse-spectrum-skeleton div,.pulse-feedback-actions{grid-template-columns:1fr}.pulse-source-list button{flex-basis:100%;max-width:100%}.pulse-signal-grid article,.pulse-signal-grid article+article{padding:22px 0;border-right:0;border-bottom:1px solid var(--line)}.pulse-hero h1{font-size:min(var(--story-title-size,62px),62px);line-height:1}.pulse-deck{font-size:19px}.pulse-tools{gap:8px}.pulse-tools button,.pulse-tool-skeleton{width:48px;height:48px}.pulse-headline-list button{grid-template-columns:1fr}.pulse-comments form{grid-template-columns:1fr}.pulse-comments form>svg{display:none}.pulse-comments form button{justify-content:center}.pulse-copy-block{padding:26px 20px}.pulse-copy-block h2{font-size:34px}.pulse-section-heading{display:block}.pulse-skel-title{height:50px}.pulse-state h1{font-size:44px}.pulse-state>div{padding:26px;box-shadow:6px 6px 0 var(--orange)}}
+@media(max-width:520px){.pulse-detail{overflow-x:hidden}.pulse-detail-layout{gap:18px;padding:20px 12px 44px}.pulse-hero{padding:24px 0 26px}.pulse-kicker{font-size:11px;line-height:1.3}.pulse-hero h1{font-size:min(var(--story-title-size,54px),54px);line-height:1.02;letter-spacing:-.045em}.pulse-deck{font-size:18px}.pulse-meta{gap:8px;margin-top:18px}.pulse-meta>span:not(.pulse-fdi-badge){max-width:100%;font-size:12px}.pulse-summary,.pulse-article-copy{gap:12px;padding:22px 0}.pulse-context-copy p{font-size:20px}.pulse-article-body{gap:14px}.pulse-article-body .pulse-lede{font-size:21px;line-height:1.38}.pulse-article-body p{font-size:17px;line-height:1.55}.pulse-signal-grid article,.pulse-signal-grid article+article{min-height:auto;padding:20px 0}.pulse-signal-grid h2,.pulse-section-heading h2{font-size:24px}.pulse-spectrum,.pulse-headlines{padding:24px 0}.pulse-track{height:126px;margin:22px 22px 26px}.pulse-track button{width:38px;height:38px;font-size:12px}.pulse-track>span{font-size:11px}.pulse-source-list button{min-height:auto;padding:14px}.pulse-copy-block{gap:14px;padding:22px 16px}.pulse-reading-label{gap:9px}.pulse-reading-label span{padding:7px 9px;font-size:11px}.pulse-copy-block h2{font-size:30px;line-height:1.04}.pulse-copy-block p:last-child{font-size:17px;margin-top:14px}.pulse-headline-list button{gap:9px;padding:13px}.pulse-headline-list small{width:40px;height:30px}.pulse-tools{overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.pulse-tools::-webkit-scrollbar{display:none}.pulse-tools button,.pulse-tool-skeleton{flex:0 0 46px;width:46px;height:46px}.pulse-rail{gap:12px}.pulse-rail-card{padding:14px}.pulse-score{gap:12px;padding:15px}.pulse-score .pulse-fdi-badge{box-shadow:4px 4px 0 var(--orange)}.pulse-score-count{padding:10px 0}.pulse-selected-source strong{font-size:20px}.pulse-skel-title{width:100%;height:46px}.pulse-skel-title.short{width:72%}.pulse-skel-deck{width:88%}.pulse-skel-meta i{width:112px;height:32px}.pulse-spectrum-skeleton i{height:126px;margin:22px 4px 26px}.pulse-spectrum-skeleton b{height:96px}.pulse-rail-card-skeleton{min-height:116px}.pulse-rail-card-skeleton.is-score{min-height:200px}.pulse-source-modal,.pulse-review-modal{padding:12px}.pulse-source-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--orange)}.pulse-source-modal-head{align-items:flex-start}.pulse-source-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-source-modal-panel>p{font-size:16px}.pulse-source-modal dl div{grid-template-columns:1fr;gap:6px}.pulse-review-modal-panel{max-height:86vh;padding:18px;box-shadow:6px 6px 0 var(--cyan)}.pulse-review-modal h2{font-size:clamp(30px,10vw,46px)}.pulse-review-issues{grid-template-columns:1fr}.pulse-review-modal-actions{display:grid;grid-template-columns:1fr}.pulse-state{padding:32px 12px}.pulse-state>div{padding:22px}.pulse-state h1{font-size:clamp(34px,10vw,48px)}.pulse-state nav{display:grid;grid-template-columns:1fr}.pulse-state a{justify-content:center;text-align:center}}
 `;
