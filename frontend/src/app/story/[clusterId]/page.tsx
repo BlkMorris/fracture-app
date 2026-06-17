@@ -133,9 +133,9 @@ export default function StoryPage({ params }: { params: Promise<{ clusterId: str
           </header>
 
           <section className="pulse-summary">
-            <p className="pulse-label">Context</p>
+            <p className="pulse-label">Summary</p>
             <div className="pulse-context-copy">
-              <p>{context}</p>
+              <p>{cleanText(contextArticle?.summary)}</p>
               {hasMoreContext && contextArticle ? (
                 <button type="button" onClick={() => setSourceModalArticle(contextArticle)}>Read More</button>
               ) : null}
